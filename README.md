@@ -146,6 +146,20 @@ URDF 中定义了两种材质：
 - **TriHand 三指手重定向**：`trihand/g1_upper_body_retargeter.py`
 - **下半身站立控制**：`g1_lower_body_standing.py`
 
+## 本地机器人构建
+
+`model/` 中提供了一个最小构建脚本，用于从本仓库的 URDF 和 mesh 部件信息生成机器人 USD：
+
+```powershell
+D:\il\env\Scripts\python.exe model\build_robot_model\build_g1_from_urdf.py --headless
+```
+
+该脚本会先检查 `yushu_robot_urdf/g1_29dof_mode_16.urdf` 引用的 mesh 文件是否都存在，然后生成 `model/build_robot_model/generated/g1_29dof_mode_16.usd`。当前流程只构建机器人本体，不添加动作、任务、控制器或额外场景。
+
+`model/` 中每个独立问题或工作流都应放入自己的文件夹；当前机器人模型构建代码位于 `model/build_robot_model/`。
+
+运行该命令需要已配置 IsaacLab/Isaac Sim Python 环境。本仓库当前使用 `D:\il\env\Scripts\python.exe`。
+
 ## 注意事项
 
 1. **MuJoCo 兼容性**：URDF 中包含 MuJoCo 编译器配置（`<mujoco>` 标签），如需转换为 MuJoCo 格式，需取消注释 floating base joint 相关配置。
