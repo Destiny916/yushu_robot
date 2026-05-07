@@ -6,8 +6,19 @@
 
 ```
 yushu_robot/
+├── .codex/
+│   └── skills/
+│       └── yushu-robot-project/
+│           └── SKILL.md              # Codex 项目工作流 skill
+├── .trae/
+│   └── skills/
+│       └── trae-upload-yushu-robot/
+│           └── SKILL.md              # TRAE 上传工作流 skill
+├── model/                            # 机器人仿真、训练、验证代码
+│   └── README.md                     # 仿真代码目录约定
 └── yushu_robot_urdf/
     ├── g1_29dof_mode_16.urdf        # 主 URDF 模型文件
+    ├── README_部件说明.md            # 机器人部件概览和命名规则
     └── meshes/                       # STL 网格文件（120+ 个）
         ├── pelvis.STL                # 骨盆
         ├── torso_link*.STL           # 躯干
@@ -23,6 +34,35 @@ yushu_robot/
         ├── d455_link.STL             # Intel RealSense D455 深度相机
         └── ...
 ```
+
+## 项目工作约定
+
+后续所有与本项目相关的任务都在 `yushu_robot/` 仓库内进行，避免把项目代码散落到外层 IsaacLab 目录。
+
+- `yushu_robot_urdf/`：保存所有机器人本体相关信息，包括 URDF、mesh、传感器/末端执行器几何资源，以及后续新增机器人的部件文件。
+- `model/`：保存用于机器人仿真的代码，包括 IsaacLab 环境配置、资产转换脚本、训练入口、评估脚本、控制器、策略加载与实验配置。
+- `.codex/skills/yushu-robot-project/SKILL.md`：项目专用 Codex skill，记录工作根目录、资源边界、README 更新和 Git 上传规则。
+- `.trae/skills/trae-upload-yushu-robot/SKILL.md`：TRAE 上传工作流 skill，同样遵循 `codex` 分支上传规则。
+
+### Git 分支规则
+
+本仓库远端为：
+
+```bash
+https://github.com/Destiny916/yushu_robot.git
+```
+
+需要上传到 GitHub 时，统一提交并推送到 `codex` 分支：
+
+```bash
+git switch codex
+git status -sb
+git add <changed-files>
+git commit -m "<message>"
+git push origin codex
+```
+
+除非明确要求，项目相关提交不推送到 `main` 或其他分支。
 
 ## 机器人关节配置（29 DOF）
 
