@@ -37,7 +37,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=get_default_usd_path(),
-        help="Path for the generated USD. Defaults to model/build_robot_model/generated/g1_29dof_mode_16.usd.",
+        help="Path for the generated USD. Defaults to model/generatedUSD/g1_29dof_mode_16.usd.",
     )
     parser.add_argument(
         "--fix-base",

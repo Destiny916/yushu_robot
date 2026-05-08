@@ -22,11 +22,11 @@ class RobotAssetTests(unittest.TestCase):
         self.assertEqual(35, len(set(mesh_refs)))
         self.assertEqual([], missing)
 
-    def test_default_usd_stays_inside_this_workflow_folder(self):
+    def test_default_usd_uses_global_model_generated_usd_folder(self):
         usd_path = get_default_usd_path()
 
-        self.assertEqual("build_robot_model", usd_path.parents[1].name)
-        self.assertEqual("generated", usd_path.parent.name)
+        self.assertEqual("model", usd_path.parents[1].name)
+        self.assertEqual("generatedUSD", usd_path.parent.name)
 
     def test_missing_mesh_detection_uses_urdf_relative_paths(self):
         with TemporaryDirectory() as temp_dir:
