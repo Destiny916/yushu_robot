@@ -46,7 +46,7 @@ yushu_robot/
     └── step6_train/
 ```
 
-Only the first four `model/` folders currently exist or are partly complete. Later folders are planned.
+Steps 0-5 are complete. Step 6 P1.1 (terrain system) is complete under `model/step6_train/terrains/`. Step 6 P1.2 (standing PPO training) is complete under `model/step6_train/phase1_stand/`.
 
 ## Current Status
 
@@ -58,7 +58,7 @@ Only the first four `model/` folders currently exist or are partly complete. Lat
 | Step 3 | Complete | `model/step3_robot_cfg/` | Reusable local `G1_LOCAL_CFG` |
 | Step 4 | Complete | `model/step4_manager_env/` | Manager-Based RL environment |
 | Step 5 | Complete | `model/step5_sensors/` | Contact sensor integration |
-| Step 6 | Not started | `model/step6_train/` | RSL-RL or rl_games training entry |
+| Step 6 | P1.1 Terrain + P1.2 Stand Complete | `model/step6_train/` | AHC multi-behavior distillation (23 files planned) |
 
 ## Known Warnings
 
@@ -247,36 +247,27 @@ Verified result:
 - Policy observation shape remains `(1, 93)`
 - Maximum contact force can be read from `contact_forces.data.net_forces_w`
 
-## Next Step: Step 6 Training Entry
+## Next Step: Step 6 AHC Multi-Behavior Distillation Training
 
-Purpose:
+Status: **Spec Complete** — see `model/step6_train/spec/2026-05-08_g1_ahc_standing/`
 
-Add the first training entry only after the Manager-Based environment and sensors are verified.
+The AHC (Adaptive Humanoid Control) scheme trains the G1 robot to stand across 6 terrain types (flat, 10°/20°/30° slopes, stairs, irregular waves) and walk with smooth switching via confidence command `c ∈ [0,1]`.
 
-Planned folder:
+Three phases:
+1. **Phase 1**: PPO independently trains Standing and Walking specialized policies
+2. **Phase 2**: DAgger distills both into a MoE unified policy (Gating Network + frozen Experts)
+3. **Phase 3**: PCGrad multi-task PPO fine-tuning for smooth stand↔walk transitions
 
-```text
-model/step6_train/
-```
+Spec doc: `model/step6_train/spec/2026-05-08_g1_ahc_standing/spec.md`
+Plan doc: `model/step6_train/spec/2026-05-08_g1_ahc_standing/plan.md`
 
-Planned files:
-
-- `model/step6_train/rsl_rl_stand_ppo.py`
-- `model/step6_train/agents/rsl_rl_ppo_cfg.py`
-
-Initial scope:
-
-- Register or instantiate the local stand environment.
-- Create PPO config.
-- Start short smoke training.
-- Save checkpoints under a clear logs directory.
+Implementation scope: 23 files across 7 subdirectories under `model/step6_train/`.
 
 Acceptance criteria:
 
-- Training command starts.
-- A short smoke run completes.
-- Checkpoint save path is documented.
-- Longer training should only happen after smoke tests pass.
+- Phase 1: Standing survival > 95% (flat), > 80% (30° slope); Walking avg velocity error < 0.2 m/s
+- Phase 2: α prediction MSE < 0.05; MoE standing survival > 90% (c=1); walking error < 0.3 m/s (c=0)
+- Phase 3: Performance ≥ Phase 2; smooth action transition across c ∈ [0, 1]
 
 ## Verification Checklist Before Saying a Step Is Complete
 
