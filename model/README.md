@@ -93,3 +93,95 @@ D:\il\env\Scripts\python.exe model\step6_train\terrains\test_terrains.py --terra
 Available terrains: `T0` (flat), `T1` (10° slope), `T2` (20° slope), `T3` (30° slope), `T4` (stairs), `T5` (wave). Use `--terrain <key>` to select, `--num_envs N` for multiple robots. The robot stands still on the terrain; height info is printed every 50 steps.
 
 Design doc and implementation plan: `model/step6_train/spec/2026-05-08_g1_ahc_standing/`.
+
+## Step 6: AHC Deep RL Training Framework
+
+Step 6 implements the AHC (Adaptive Humanoid Control) multi-behavior distillation training framework. Code lives in `model/step6_train/` with three major subsystems:
+
+### Terrain System (P1.1)
+
+Six terrain types, each in its own Python file with lazy imports for Isaac Sim compatibility:
+
+| Terrain | File | Type | Key Parameter |
+|---------|------|------|---------------|
+| T0 | `T0_plane.py` | Flat plane | — |
+| T1 | `T1_slope_10.py` | 10° slope | slope=0.175 rad |
+| T2 | `T2_slope_20.py` | 20° slope | slope=0.349 rad |
+| T3 | `T3_slope_30.py` | 30° slope | slope=0.524 rad |
+| T4 | `T4_stairs.py` | Stairs | step_height 0.05-0.15m, width 0.3m |
+| T5 | `T5_wave.py` | Irregular wave | amplitude 0.02-0.08m |
+
+Each file exports `make_terrain_cfg()` (deferred import pattern). The `terrains/__init__.py` provides `TERRAIN_MAKERS`, `TERRAIN_NAMES`, and `get_terrain_cfg(key)` for lazy lookup.
+
+### Phase 1 Standing PPO (P1.2)
+
+The standing environment and PPO training entry live in `model/step6_train/phase1_stand/`. It uses PPO (Proximal Policy Optimization) via RSL-RL's `OnPolicyRunner`.
+
+**Key files:**
+
+- `stand_env_cfg.py` — Manager-Based RL environment config with 11 reward terms, 4 termination conditions, 93-dim observation, 29-dim action
+- `stand_rewards.py` — Custom reward function `lin_vel_xy_l2` for horizontal velocity penalty
+- `stand_ppo_cfg.py` — PPO hyperparameters: Actor/Critic [512,256,128], lr=1e-3, γ=0.99, λ=0.95
+- `train_stand.py` — Training entry with resume/checkpoint support
+
+**Reward design (11 terms):**
+
+| Reward | Weight | Purpose |
+|--------|--------|---------|
+| `is_alive` | +1.0 | Survival bonus per step |
+| `flat_orientation_l2` | -2.0 | Torso tilt penalty |
+| `base_height_l2` | -1.0 | Height deviation from 0.78m target |
+| `lin_vel_xy_l2` | -1.5 | Horizontal velocity penalty (standing = zero) |
+| `ang_vel_xy_l2` | -0.5 | Angular velocity penalty |
+| `joint_torques_l2` | -2.5e-5 | Energy efficiency (very small weight) |
+| `joint_vel_l2` | -1.0e-3 | Joint velocity smoothing |
+| `joint_acc_l2` | -2.5e-7 | Joint acceleration smoothing (tiny weight) |
+| `action_rate_l2` | -0.01 | Action change rate penalty |
+| `joint_deviation_l1` | -0.1 | Deviation from default pose |
+| `termination_penalty` | -200.0 | Catastrophic fall penalty |
+
+**Termination conditions:** bad_orientation (>45°), root_height (<0.45m), joint_pos_out_of_limit, time_out (30s).
+
+**Network architecture:**
+
+```
+Actor: Input(93) → 512 → ELU → 256 → ELU → 128 → ELU → 29 → tanh
+Critic: Input(93) → 512 → ELU → 256 → ELU → 128 → ELU → 1
+```
+
+**Verify:**
+
+```powershell
+D:\il\env\Scripts\python.exe -B model\step6_train\phase1_stand\test_stand_env_cfg.py -v
+D:\il\env\Scripts\python.exe -B model\step6_train\phase1_stand\test_train_stand.py -v
+```
+
+**Short smoke training:**
+
+```powershell
+D:\il\env\Scripts\python.exe model\step6_train\phase1_stand\train_stand.py --headless --num_envs 64 --max_iterations 100 --run_name smoke
+```
+
+**Full standing PPO training:**
+
+```powershell
+D:\il\env\Scripts\python.exe model\step6_train\phase1_stand\train_stand.py --headless --num_envs 4096 --max_iterations 1500
+```
+
+**Resume from checkpoint:**
+
+```powershell
+D:\il\env\Scripts\python.exe model\step6_train\phase1_stand\train_stand.py --headless --resume --load_run <run-folder> --checkpoint checkpoint_stand.pt
+```
+
+Training logs and checkpoints are written under `logs/rsl_rl/g1_stand/<timestamp>/`. RSL-RL checkpoints are saved as `model_*.pt`, and the newest checkpoint is also copied to `checkpoint_stand.pt` after training finishes.
+
+### AHC Three-Phase Architecture (Planned)
+
+The full AHC scheme has three phases:
+
+1. **Phase 1 (PPO)**: Train standing (π_stand) and walking (π_walk) policies independently across T0-T5 terrains
+2. **Phase 2 (DAgger)**: Distill both into a MoE unified policy — Gating Network blends frozen experts: `action = α·π_stand(obs) + (1-α)·π_walk(obs)`
+3. **Phase 3 (PCGrad)**: End-to-end fine-tuning with Projecting Conflicting Gradients for smooth stand↔walk transitions
+
+Phase 2 and Phase 3 implementation is planned under `model/step6_train/phase2_dagger/` and `model/step6_train/phase3_pcgrad/`.

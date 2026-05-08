@@ -81,7 +81,7 @@ D:\il\env\Scripts\python.exe -B -c "from model.step6_train.terrains.g1_stand_ter
 | `__init__.py` | 模块导出 |
 | `stand_env_cfg.py` | `G1StandEnvCfg` (ManagerBasedRLEnvCfg) |
 | `stand_rewards.py` | 站立奖励函数和终止条件 |
-| `test_stand_env.py` | 环境冒烟测试 |
+| `test_stand_env_cfg.py` | 环境配置合约测试 |
 
 **实现要点**:
 
@@ -125,7 +125,7 @@ D:\il\env\Scripts\python.exe -B -c "from model.step6_train.phase1_stand.stand_en
 
 **依赖**: P1.1 (地形配置)
 
-**状态**: 待开始
+**状态**: 基线完成（无外力、基础奖励/终止已实现；terrain one-hot、contact symmetry 可后续增强）
 
 ---
 
@@ -139,6 +139,7 @@ D:\il\env\Scripts\python.exe -B -c "from model.step6_train.phase1_stand.stand_en
 |------|------|
 | `stand_ppo_cfg.py` | PPO 超参数配置 (RslRlOnPolicyRunnerCfg) |
 | `train_stand.py` | 训练入口脚本 |
+| `test_train_stand.py` | PPO 配置和续训合约测试 |
 
 **实现要点**:
 
@@ -180,19 +181,22 @@ D:\il\env\Scripts\python.exe -B -c "from model.step6_train.phase1_stand.stand_en
    - 包装为 `RslRlVecEnvWrapper`
    - 创建 `OnPolicyRunner` 启动训练
    - 日志输出到 `logs/rsl_rl/g1_stand/`
-   - checkpoint 保存为 `checkpoint_stand.pt`
+   - RSL-RL checkpoint 保存为 `model_*.pt`
+   - 训练结束后最新 checkpoint 复制为 `checkpoint_stand.pt`
+   - 支持 `--resume --load_run <run-folder> --checkpoint <checkpoint>` 继续训练
 
 **验证命令**:
 ```powershell
 # 冒烟训练 (100 iters)
 D:\il\env\Scripts\python.exe model/step6_train/phase1_stand/train_stand.py --headless --num_envs 64 --max_iterations 100
+D:\il\env\Scripts\python.exe model/step6_train/phase1_stand/train_stand.py --headless --resume --load_run <run-folder> --checkpoint checkpoint_stand.pt
 ```
 
 **预计工作量**: 2 个文件
 
 **依赖**: P1.2 (站立环境)
 
-**状态**: 待开始
+**状态**: 入口完成（完整模型需运行训练命令生成）
 
 ---
 

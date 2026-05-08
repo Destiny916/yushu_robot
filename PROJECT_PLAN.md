@@ -46,7 +46,7 @@ yushu_robot/
     └── step6_train/
 ```
 
-Steps 0-5 are complete. Step 6 P1.1 (terrain system) is complete under `model/step6_train/terrains/`.
+Steps 0-5 are complete. Step 6 P1.1 (terrain system) is complete under `model/step6_train/terrains/`. Step 6 P1.2 (standing PPO training) is complete under `model/step6_train/phase1_stand/`.
 
 ## Current Status
 
@@ -58,7 +58,7 @@ Steps 0-5 are complete. Step 6 P1.1 (terrain system) is complete under `model/st
 | Step 3 | Complete | `model/step3_robot_cfg/` | Reusable local `G1_LOCAL_CFG` |
 | Step 4 | Complete | `model/step4_manager_env/` | Manager-Based RL environment |
 | Step 5 | Complete | `model/step5_sensors/` | Contact sensor integration |
-| Step 6 | P1.1 Terrain Complete | `model/step6_train/` | AHC multi-behavior distillation (23 files planned) |
+| Step 6 | P1.1 Terrain + P1.2 Stand Complete | `model/step6_train/` | AHC multi-behavior distillation (23 files planned) |
 
 ## Known Warnings
 
