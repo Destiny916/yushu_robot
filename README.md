@@ -16,6 +16,8 @@ yushu_robot/
 │           └── SKILL.md              # TRAE 上传工作流 skill
 ├── model/                            # 机器人仿真、训练、验证代码
 │   └── README.md                     # 仿真代码目录约定
+├── PROJECT_PLAN.md                   # 项目计划书与后续交接清单
+├── spec.md                           # 训练场景构建规范（Step 0-6）
 └── yushu_robot_urdf/
     ├── g1_29dof_mode_16.urdf        # 主 URDF 模型文件
     ├── README_部件说明.md            # 机器人部件概览和命名规则
@@ -42,7 +44,7 @@ yushu_robot/
 - `yushu_robot_urdf/`：保存所有机器人本体相关信息，包括 URDF、mesh、传感器/末端执行器几何资源，以及后续新增机器人的部件文件。
 - `model/`：保存用于机器人仿真的代码，包括 IsaacLab 环境配置、资产转换脚本、训练入口、评估脚本、控制器、策略加载与实验配置。
 - `.codex/skills/yushu-robot-project/SKILL.md`：项目专用 Codex skill，记录工作根目录、资源边界、README 更新和 Git 上传规则。
-- `.trae/skills/trae-upload-yushu-robot/SKILL.md`：TRAE 上传工作流 skill，同样遵循 `codex` 分支上传规则。
+- `.trae/skills/trae-upload-yushu-robot/SKILL.md`：TRAE 上传工作流 skill。当前本次上传按用户要求推送到 `codex` 分支。
 
 ### Git 分支规则
 
@@ -52,7 +54,7 @@ yushu_robot/
 https://github.com/Destiny916/yushu_robot.git
 ```
 
-需要上传到 GitHub 时，统一提交并推送到 `codex` 分支：
+需要上传到 GitHub 时，当前提交并推送到 `codex` 分支：
 
 ```bash
 git switch codex
@@ -154,11 +156,61 @@ URDF 中定义了两种材质：
 D:\il\env\Scripts\python.exe model\build_robot_model\build_g1_from_urdf.py --headless
 ```
 
-该脚本会先检查 `yushu_robot_urdf/g1_29dof_mode_16.urdf` 引用的 mesh 文件是否都存在，然后生成 `model/build_robot_model/generated/g1_29dof_mode_16.usd`。当前流程只构建机器人本体，不添加动作、任务、控制器或额外场景。
+该脚本会先检查 `yushu_robot_urdf/g1_29dof_mode_16.urdf` 引用的 mesh 文件是否都存在，然后生成 `model/generatedUSD/g1_29dof_mode_16.usd`。当前流程只构建机器人本体，不添加动作、任务、控制器或额外场景。
 
-`model/` 中每个独立问题或工作流都应放入自己的文件夹；当前机器人模型构建代码位于 `model/build_robot_model/`。
+`model/` 中每个独立问题或工作流都应放入自己的文件夹；当前机器人模型构建代码位于 `model/build_robot_model/`。全局 USD 生成资产统一保存在 `model/generatedUSD/`。
 
 运行该命令需要已配置 IsaacLab/Isaac Sim Python 环境。本仓库当前使用 `D:\il\env\Scripts\python.exe`。
+
+### Step 1：手动加载 Articulation
+
+生成全局 USD 后，可以用 Step 1 脚本把机器人加载到 Isaac Sim 场景中：
+
+```powershell
+D:\il\env\Scripts\python.exe model\step1_load_articulation\step1_load_articulation.py --headless
+```
+
+该脚本位于 `model/step1_load_articulation/`，默认只创建 1 个 G1 机器人实例；若不设置 `--max_steps`，仿真会一直运行，直到应用关闭。脚本只创建地面、灯光和机器人，并用随机关节力矩做最小仿真验证，不包含任务、训练或额外场景。
+
+### Step 2：声明式 InteractiveScene
+
+Step 2 使用 IsaacLab 的 `InteractiveSceneCfg` 管理同样的机器人、地面和灯光：
+
+```powershell
+D:\il\env\Scripts\python.exe model\step2_create_scene\step2_create_scene.py --headless
+```
+
+该脚本位于 `model/step2_create_scene/`，默认 1 个机器人，未设置 `--max_steps` 时无限循环。
+
+### Step 3：本地机器人配置
+
+Step 3 将本地 G1 机器人资产配置抽取到可复用模块：
+
+```text
+model/step3_robot_cfg/g1_local_cfg.py
+```
+
+后续场景和环境代码通过 `G1_LOCAL_CFG.replace(prim_path=...)` 复用该配置，USD 路径统一指向 `model/generatedUSD/g1_29dof_mode_16.usd`。
+
+### Step 4：Manager-Based 环境
+
+Step 4 构建最小 Manager-Based 站立环境：
+
+```powershell
+D:\il\env\Scripts\python.exe model\step4_manager_env\run_stand_env.py --headless
+```
+
+该环境默认 1 个机器人，未设置 `--max_steps` 时无限循环；action 维度为 29，policy observation 维度为 93。
+
+### Step 5：接触传感器
+
+Step 5 在 Step 4 环境上追加脚踝接触传感器：
+
+```powershell
+D:\il\env\Scripts\python.exe model\step5_sensors\run_sensors_env.py --headless
+```
+
+接触传感器挂在 `{ENV_REGEX_NS}/Robot/.*ankle_roll_link`，默认单机器人输出 contact force shape 为 `(1, 2, 3)`。
 
 ## 注意事项
 

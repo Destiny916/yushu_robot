@@ -11,7 +11,7 @@ ISAACLAB_ROOT = PROJECT_ROOT.parents[1]
 ISAACLAB_SOURCE_ROOT = ISAACLAB_ROOT / "source"
 URDF_DIR = PROJECT_ROOT / "yushu_robot_urdf"
 DEFAULT_URDF_PATH = URDF_DIR / "g1_29dof_mode_16.urdf"
-DEFAULT_USD_DIR = Path(__file__).resolve().parent / "generated"
+DEFAULT_USD_DIR = PROJECT_ROOT / "model" / "generatedUSD"
 DEFAULT_USD_PATH = DEFAULT_USD_DIR / "g1_29dof_mode_16.usd"
 
 
