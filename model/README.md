@@ -79,3 +79,17 @@ D:\il\env\Scripts\python.exe model\step5_sensors\run_sensors_env.py --headless
 ```
 
 This step extends the Step 4 Manager-Based environment with a `ContactSensorCfg` on `{ENV_REGEX_NS}/Robot/.*ankle_roll_link`. The default one-robot run reports contact force tensors with shape `(1, 2, 3)`. Camera integration remains optional and should be added only after a stable camera prim is chosen.
+
+## Step 6: Terrain System (P1.1)
+
+The AHC training terrain system lives in `model/step6_train/terrains/`. Each terrain type is an independent Python file that exports a `make_terrain_cfg()` function (lazy import pattern for Isaac Sim compatibility).
+
+Run the terrain test from the repository root:
+
+```powershell
+D:\il\env\Scripts\python.exe model\step6_train\terrains\test_terrains.py --terrain T0 --headless --max_steps 2
+```
+
+Available terrains: `T0` (flat), `T1` (10° slope), `T2` (20° slope), `T3` (30° slope), `T4` (stairs), `T5` (wave). Use `--terrain <key>` to select, `--num_envs N` for multiple robots. The robot stands still on the terrain; height info is printed every 50 steps.
+
+Design doc and implementation plan: `model/step6_train/spec/2026-05-08_g1_ahc_standing/`.

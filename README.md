@@ -212,6 +212,33 @@ D:\il\env\Scripts\python.exe model\step5_sensors\run_sensors_env.py --headless
 
 接触传感器挂在 `{ENV_REGEX_NS}/Robot/.*ankle_roll_link`，默认单机器人输出 contact force shape 为 `(1, 2, 3)`。
 
+### Step 6：地形系统（P1.1）
+
+Step 6 为 AHC 训练 Phase 1 创建了 6 种地形配置，每种地形独立为一个 Python 文件：
+
+```powershell
+# 测试指定地形（headless，2步验证）
+D:\il\env\Scripts\python.exe model\step6_train\terrains\test_terrains.py --terrain T0 --headless --max_steps 2
+D:\il\env\Scripts\python.exe model\step6_train\terrains\test_terrains.py --terrain T1 --headless --max_steps 2
+D:\il\env\Scripts\python.exe model\step6_train\terrains\test_terrains.py --terrain T3 --headless --max_steps 2
+D:\il\env\Scripts\python.exe model\step6_train\terrains\test_terrains.py --terrain T4 --headless --max_steps 2
+```
+
+地形类型：
+
+| 地形 | 文件 | 类型 | 参数 |
+|------|------|------|------|
+| T0 | `T0_plane.py` | 平面 | — |
+| T1 | `T1_slope_10.py` | 10° 斜坡 | slope=0.175 rad |
+| T2 | `T2_slope_20.py` | 20° 斜坡 | slope=0.349 rad |
+| T3 | `T3_slope_30.py` | 30° 斜坡 | slope=0.524 rad |
+| T4 | `T4_stairs.py` | 楼梯 | 台阶高 0.05-0.15m，步宽 0.3m |
+| T5 | `T5_wave.py` | 不规则波浪 | 波幅 0.02-0.08m |
+
+使用 `--terrain T0~T5` 切换地形，`--num_envs N` 设置环境数量。机器人静止站立在地形上，每 50 步打印高度信息。
+
+设计文档和实施计划位于 `model/step6_train/spec/2026-05-08_g1_ahc_standing/`。
+
 ## 注意事项
 
 1. **MuJoCo 兼容性**：URDF 中包含 MuJoCo 编译器配置（`<mujoco>` 标签），如需转换为 MuJoCo 格式，需取消注释 floating base joint 相关配置。
