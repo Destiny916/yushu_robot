@@ -37,6 +37,16 @@ class StandEnvCfgTests(unittest.TestCase):
         source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
         self.assertIn("use_terrain_origins=USE_TERRAIN_ORIGINS", source)
 
+    def test_standing_terrain_uses_high_foot_contact_friction(self):
+        stand_env_cfg = self.load_module()
+
+        self.assertEqual(2.0, stand_env_cfg.STANDING_STATIC_FRICTION)
+        self.assertEqual(2.0, stand_env_cfg.STANDING_DYNAMIC_FRICTION)
+
+        source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
+        self.assertIn("static_friction=STANDING_STATIC_FRICTION", source)
+        self.assertIn("dynamic_friction=STANDING_DYNAMIC_FRICTION", source)
+
     def test_no_external_force_events_are_declared(self):
         stand_env_cfg = self.load_module()
 
@@ -47,6 +57,7 @@ class StandEnvCfgTests(unittest.TestCase):
         stand_env_cfg = self.load_module()
 
         self.assertEqual("joint_pos", stand_env_cfg.ACTION_TERM_NAME)
+        self.assertEqual(0.10, stand_env_cfg.ACTION_SCALE)
         self.assertEqual(
             ("base_ang_vel", "projected_gravity", "joint_pos_rel", "joint_vel_rel", "last_action"),
             stand_env_cfg.POLICY_OBSERVATION_TERMS,
@@ -60,7 +71,7 @@ class StandEnvCfgTests(unittest.TestCase):
     def test_rl_training_terms_are_declared(self):
         stand_env_cfg = self.load_module()
 
-        self.assertEqual(30.0, stand_env_cfg.EPISODE_LENGTH_S)
+        self.assertEqual(300.0, stand_env_cfg.EPISODE_LENGTH_S)
         self.assertEqual(
             (
                 "is_alive",
@@ -70,6 +81,10 @@ class StandEnvCfgTests(unittest.TestCase):
                 "ang_vel_xy_l2",
                 "joint_torques_l2",
                 "joint_vel_l2",
+                "joint_pos_soft_limits_l2",
+                "joint_vel_usd_limits_l1",
+                "arm_swing_l2",
+                "arm_swing_asymmetry_l2",
                 "joint_acc_l2",
                 "action_rate_l2",
                 "joint_deviation_l1",
@@ -81,6 +96,21 @@ class StandEnvCfgTests(unittest.TestCase):
             ("time_out", "bad_orientation", "root_height_below_minimum", "joint_pos_out_of_limit"),
             stand_env_cfg.TERMINATION_TERMS,
         )
+
+    def test_standing_penalties_are_strong_enough_to_avoid_joint_limit_deaths(self):
+        stand_env_cfg = self.load_module()
+
+        self.assertEqual(-12.0, stand_env_cfg.JOINT_POS_SOFT_LIMIT_WEIGHT)
+        self.assertEqual(-8.0, stand_env_cfg.JOINT_VEL_USD_LIMIT_WEIGHT)
+        self.assertEqual(-200.0, stand_env_cfg.TERMINATION_PENALTY_WEIGHT)
+
+        source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
+        self.assertIn("scale=ACTION_SCALE", source)
+        self.assertIn("weight=JOINT_POS_SOFT_LIMIT_WEIGHT", source)
+        self.assertIn("weight=JOINT_VEL_USD_LIMIT_WEIGHT", source)
+        self.assertIn("weight=TERMINATION_PENALTY_WEIGHT", source)
+        self.assertIn("joint_pos_out_of_limit_fn", source)
+        self.assertIn("joint_vel_usd_limits_l1_fn", source)
 
 
 if __name__ == "__main__":

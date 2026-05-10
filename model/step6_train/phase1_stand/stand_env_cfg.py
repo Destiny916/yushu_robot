@@ -28,9 +28,15 @@ VALID_TERRAINS = tuple(TERRAIN_NAMES.keys())
 ROBOT_PRIM_PATH = "{ENV_REGEX_NS}/Robot"
 USE_TERRAIN_ORIGINS = False
 ACTION_TERM_NAME = "joint_pos"
+ACTION_SCALE = 0.10
+STANDING_STATIC_FRICTION = 2.0
+STANDING_DYNAMIC_FRICTION = 2.0
 RESET_EVENT_TERMS = ("reset_base", "reset_joints")
 EXTERNAL_FORCE_EVENT_TERMS = ()
-EPISODE_LENGTH_S = 30.0
+EPISODE_LENGTH_S = 300.0
+JOINT_POS_SOFT_LIMIT_WEIGHT = -12.0
+JOINT_VEL_USD_LIMIT_WEIGHT = -8.0
+TERMINATION_PENALTY_WEIGHT = -200.0
 POLICY_OBSERVATION_TERMS = (
     "base_ang_vel",
     "projected_gravity",
@@ -46,6 +52,10 @@ REWARD_TERMS = (
     "ang_vel_xy_l2",
     "joint_torques_l2",
     "joint_vel_l2",
+    "joint_pos_soft_limits_l2",
+    "joint_vel_usd_limits_l1",
+    "arm_swing_l2",
+    "arm_swing_asymmetry_l2",
     "joint_acc_l2",
     "action_rate_l2",
     "joint_deviation_l1",
@@ -84,9 +94,23 @@ def create_g1_stand_no_external_force_env_cfg(
     from isaaclab.scene import InteractiveSceneCfg
     from isaaclab.terrains import TerrainImporterCfg
     from isaaclab.utils import configclass
+    from stand_rewards import arm_swing_asymmetry_l2 as arm_swing_asymmetry_l2_fn
+    from stand_rewards import arm_swing_l2 as arm_swing_l2_fn
+    from stand_rewards import joint_pos_out_of_limit as joint_pos_out_of_limit_fn
+    from stand_rewards import joint_pos_soft_limits_l2 as joint_pos_soft_limits_l2_fn
+    from stand_rewards import joint_vel_usd_limits_l1 as joint_vel_usd_limits_l1_fn
     from stand_rewards import lin_vel_xy_l2 as lin_vel_xy_l2_fn
+    from stand_rewards import make_left_arm_swing_cfg as make_left_arm_swing_cfg_fn
+    from stand_rewards import make_right_arm_swing_cfg as make_right_arm_swing_cfg_fn
 
     globals()["lin_vel_xy_l2_fn"] = lin_vel_xy_l2_fn
+    globals()["joint_pos_soft_limits_l2_fn"] = joint_pos_soft_limits_l2_fn
+    globals()["arm_swing_l2_fn"] = arm_swing_l2_fn
+    globals()["arm_swing_asymmetry_l2_fn"] = arm_swing_asymmetry_l2_fn
+    globals()["joint_pos_out_of_limit_fn"] = joint_pos_out_of_limit_fn
+    globals()["make_left_arm_swing_cfg_fn"] = make_left_arm_swing_cfg_fn
+    globals()["make_right_arm_swing_cfg_fn"] = make_right_arm_swing_cfg_fn
+    globals()["joint_vel_usd_limits_l1_fn"] = joint_vel_usd_limits_l1_fn
 
     terrain_cfg = get_terrain_cfg(terrain_key)
 
@@ -104,8 +128,8 @@ def create_g1_stand_no_external_force_env_cfg(
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 friction_combine_mode="multiply",
                 restitution_combine_mode="multiply",
-                static_friction=1.0,
-                dynamic_friction=1.0,
+                static_friction=STANDING_STATIC_FRICTION,
+                dynamic_friction=STANDING_DYNAMIC_FRICTION,
             ),
         )
 
@@ -123,7 +147,7 @@ def create_g1_stand_no_external_force_env_cfg(
         joint_pos = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=[".*"],
-            scale=0.25,
+            scale=ACTION_SCALE,
             use_default_offset=True,
         )
 
@@ -179,11 +203,29 @@ def create_g1_stand_no_external_force_env_cfg(
         lin_vel_xy_l2 = RewTerm(func=lin_vel_xy_l2_fn, weight=-1.5)
         ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.5)
         joint_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-2.5e-5)
-        joint_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-1.0e-3)
-        joint_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-        action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
-        joint_deviation_l1 = RewTerm(func=mdp.joint_deviation_l1, weight=-0.1)
-        termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
+        joint_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-2.0e-3)
+        joint_pos_soft_limits_l2 = RewTerm(func=joint_pos_soft_limits_l2_fn, weight=JOINT_POS_SOFT_LIMIT_WEIGHT)
+        joint_vel_usd_limits_l1 = RewTerm(func=joint_vel_usd_limits_l1_fn, weight=JOINT_VEL_USD_LIMIT_WEIGHT)
+        arm_swing_l2 = RewTerm(
+            func=arm_swing_l2_fn,
+            weight=-2.0,
+            params={
+                "left_asset_cfg": make_left_arm_swing_cfg_fn(),
+                "right_asset_cfg": make_right_arm_swing_cfg_fn(),
+            },
+        )
+        arm_swing_asymmetry_l2 = RewTerm(
+            func=arm_swing_asymmetry_l2_fn,
+            weight=-4.0,
+            params={
+                "left_asset_cfg": make_left_arm_swing_cfg_fn(),
+                "right_asset_cfg": make_right_arm_swing_cfg_fn(),
+            },
+        )
+        joint_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-5.0e-7)
+        action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
+        joint_deviation_l1 = RewTerm(func=mdp.joint_deviation_l1, weight=-0.2)
+        termination_penalty = RewTerm(func=mdp.is_terminated, weight=TERMINATION_PENALTY_WEIGHT)
 
     @configclass
     class TerminationsCfg:
@@ -192,7 +234,7 @@ def create_g1_stand_no_external_force_env_cfg(
         time_out = DoneTerm(func=mdp.time_out, time_out=True)
         bad_orientation = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": 0.785})
         root_height_below_minimum = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": 0.45})
-        joint_pos_out_of_limit = DoneTerm(func=mdp.joint_pos_out_of_limit)
+        joint_pos_out_of_limit = DoneTerm(func=joint_pos_out_of_limit_fn)
 
     @configclass
     class G1StandNoExternalForceEnvCfg(ManagerBasedRLEnvCfg):
