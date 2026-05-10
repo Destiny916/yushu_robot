@@ -18,11 +18,13 @@ if str(PHASE1_STAND_DIR) not in sys.path:
 
 
 class FakeSceneEntityCfg:
-    def __init__(self, name: str, joint_names=None, preserve_order: bool = False):
+    def __init__(self, name: str, joint_names=None, body_names=None, preserve_order: bool = False):
         self.name = name
         self.joint_names = joint_names
+        self.body_names = body_names
         self.preserve_order = preserve_order
         self.joint_ids = slice(None)
+        self.body_ids = slice(None)
 
 
 def install_isaaclab_manager_stub() -> None:
@@ -123,6 +125,70 @@ class StandRewardTests(unittest.TestCase):
 
         self.assertFalse(is_out_of_limit.item())
 
+    def test_joint_vel_out_of_limit_checks_usd_velocity_limits(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.joint_vel = torch.tensor([[9.0, -10.5, 11.0]], dtype=torch.float32)
+                self.joint_vel_limits = torch.tensor([[10.0, 10.0, 10.0]], dtype=torch.float32)
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+
+        is_out_of_limit = stand_rewards.joint_vel_out_of_limit(FakeEnv(), asset_cfg=FakeSceneEntityCfg("robot"))
+
+        self.assertTrue(is_out_of_limit.item())
+
+    def test_joint_limit_violation_detects_position_or_velocity_hard_limit(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.joint_pos = torch.tensor([[0.0], [1.2], [0.0]], dtype=torch.float32)
+                self.joint_pos_limits = torch.tensor([[[-1.0, 1.0]], [[-1.0, 1.0]], [[-1.0, 1.0]]])
+                self.joint_vel = torch.tensor([[5.0], [5.0], [11.0]], dtype=torch.float32)
+                self.joint_vel_limits = torch.tensor([[10.0], [10.0], [10.0]], dtype=torch.float32)
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+
+        is_violated = stand_rewards.joint_limit_violation(FakeEnv(), asset_cfg=FakeSceneEntityCfg("robot"))
+
+        self.assertEqual([False, True, True], is_violated.tolist())
+
+    def test_joint_pos_hard_limits_l1_penalizes_only_usd_limit_excess(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.joint_pos = torch.tensor([[-1.2, -0.5, 0.8, 1.4]], dtype=torch.float32)
+                self.joint_pos_limits = torch.tensor(
+                    [[[-1.0, 1.0], [-1.0, 1.0], [-1.0, 1.0], [-1.0, 1.0]]], dtype=torch.float32
+                )
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+
+        penalty = stand_rewards.joint_pos_hard_limits_l1(FakeEnv(), asset_cfg=FakeSceneEntityCfg("robot"))
+
+        self.assertAlmostEqual(0.6, penalty.item(), places=6)
+
     def test_joint_vel_usd_limits_l1_stays_zero_below_30_percent_of_usd_limit(self):
         stand_rewards = self.load_module()
 
@@ -162,6 +228,175 @@ class StandRewardTests(unittest.TestCase):
         penalty = stand_rewards.joint_vel_usd_limits_l1(FakeEnv(), asset_cfg=FakeSceneEntityCfg("robot"))
 
         self.assertAlmostEqual(3.5, penalty.item(), places=6)
+
+    def test_root_height_below_minimum_matches_reset_fall_definition(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.root_pos_w = torch.tensor(
+                    [
+                        [0.0, 0.0, 0.24],
+                        [0.0, 0.0, 0.25],
+                        [0.0, 0.0, 0.40],
+                    ],
+                    dtype=torch.float32,
+                )
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+
+        is_fallen = stand_rewards.root_height_below_minimum(
+            FakeEnv(),
+            minimum_height=0.25,
+            asset_cfg=FakeSceneEntityCfg("robot"),
+        )
+
+        self.assertEqual([True, False, False], is_fallen.tolist())
+
+    def test_feet_slide_penalizes_planar_foot_velocity_only_when_in_contact(self):
+        stand_rewards = self.load_module()
+
+        class FakeContactData:
+            def __init__(self):
+                self.net_forces_w_history = torch.tensor(
+                    [
+                        [
+                            [[0.0, 0.0, 5.0], [0.0, 0.0, 0.2]],
+                            [[0.0, 0.0, 2.0], [0.0, 0.0, 0.1]],
+                        ]
+                    ],
+                    dtype=torch.float32,
+                )
+
+        class FakeContactSensor:
+            def __init__(self):
+                self.data = FakeContactData()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.body_lin_vel_w = torch.tensor([[[3.0, 4.0, 0.0], [10.0, 0.0, 0.0]]], dtype=torch.float32)
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeScene(dict):
+            @property
+            def sensors(self):
+                return self
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = FakeScene({"robot": FakeAsset(), "contact_forces": FakeContactSensor()})
+
+        penalty = stand_rewards.feet_slide(
+            FakeEnv(),
+            sensor_cfg=FakeSceneEntityCfg("contact_forces"),
+            asset_cfg=FakeSceneEntityCfg("robot"),
+            contact_threshold=1.0,
+        )
+
+        self.assertAlmostEqual(5.0, penalty.item(), places=6)
+
+    def test_feet_contact_presence_penalizes_missing_contacts(self):
+        stand_rewards = self.load_module()
+
+        class FakeContactData:
+            def __init__(self):
+                self.net_forces_w_history = torch.tensor(
+                    [
+                        [[[0.0, 0.0, 5.0], [0.0, 0.0, 4.0]]],
+                        [[[0.0, 0.0, 5.0], [0.0, 0.0, 0.1]]],
+                        [[[0.0, 0.0, 0.1], [0.0, 0.0, 0.1]]],
+                    ],
+                    dtype=torch.float32,
+                )
+
+        class FakeContactSensor:
+            def __init__(self):
+                self.data = FakeContactData()
+
+        class FakeScene(dict):
+            @property
+            def sensors(self):
+                return self
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = FakeScene({"contact_forces": FakeContactSensor()})
+
+        penalty = stand_rewards.feet_contact_presence(
+            FakeEnv(),
+            sensor_cfg=FakeSceneEntityCfg("contact_forces"),
+            contact_threshold=1.0,
+        )
+
+        self.assertEqual([0.0, 1.0, 2.0], penalty.tolist())
+
+    def test_feet_contact_balance_penalizes_left_right_force_imbalance(self):
+        stand_rewards = self.load_module()
+
+        class FakeContactData:
+            def __init__(self):
+                self.net_forces_w_history = torch.tensor(
+                    [
+                        [[[0.0, 0.0, 6.0], [0.0, 0.0, 2.0]]],
+                        [[[0.0, 0.0, 3.0], [0.0, 0.0, 3.0]]],
+                    ],
+                    dtype=torch.float32,
+                )
+
+        class FakeContactSensor:
+            def __init__(self):
+                self.data = FakeContactData()
+
+        class FakeScene(dict):
+            @property
+            def sensors(self):
+                return self
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = FakeScene({"contact_forces": FakeContactSensor()})
+
+        penalty = stand_rewards.feet_contact_balance(
+            FakeEnv(),
+            sensor_cfg=FakeSceneEntityCfg("contact_forces"),
+        )
+
+        self.assertAlmostEqual(0.5, penalty[0].item(), places=6)
+        self.assertAlmostEqual(0.0, penalty[1].item(), places=6)
+
+    def test_joint_deviation_symmetry_uses_deviation_from_default_pose(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.joint_pos = torch.tensor([[0.3, 0.4, 0.5, 0.1]], dtype=torch.float32)
+                self.default_joint_pos = torch.tensor([[0.1, 0.2, 0.2, -0.1]], dtype=torch.float32)
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+
+        left_cfg = FakeSceneEntityCfg("robot")
+        left_cfg.joint_ids = [0, 1]
+        right_cfg = FakeSceneEntityCfg("robot")
+        right_cfg.joint_ids = [2, 3]
+
+        penalty = stand_rewards.joint_deviation_symmetry_l1(FakeEnv(), left_cfg, right_cfg)
+
+        self.assertAlmostEqual(0.1, penalty.item(), places=6)
 
 
 if __name__ == "__main__":

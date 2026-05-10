@@ -15,7 +15,7 @@ local Unitree G1 robot.
 ## Environment Summary
 
 - Terrain: selected by `--terrain T0` through `--terrain T5`.
-- Episode length: 300 seconds.
+- Episode length: 60 seconds.
 - Action: 29 joint position targets, scaled by `ACTION_SCALE = 0.10`.
 - Observation: 93 values from base angular velocity, projected gravity, joint
   positions, joint velocities, and last action.
@@ -30,10 +30,21 @@ failures:
 - Base stability: alive reward, flat orientation, height, horizontal velocity,
   and angular velocity.
 - Smoothness: joint velocity, joint acceleration, and action-rate penalties.
-- Joint safety: USD joint-position limit proximity, USD joint-velocity limit
-  threshold at 30%, and hard USD joint-position termination.
+- Joint safety: USD joint-position limit proximity, hard USD joint-position
+  excess, and USD joint-velocity limit threshold at 30%.
+- Foot contact quality: ankle contact sensors penalize foot sliding, missing
+  foot contacts, and left/right contact-force imbalance.
+- Natural posture: waist and arm joints are encouraged to stay near the default
+  standing pose, with left/right arm symmetry. Hip, knee, and ankle joints are
+  intentionally not posture-constrained so the policy can adapt across terrain.
+- Reset conditions: 60-second timeout, full-fall root height below `0.25m`,
+  hard USD joint-position limit violation, or hard USD joint-velocity limit
+  violation.
 - Arm stillness: arm swing and left/right arm swing asymmetry penalties.
-- Failure avoidance: `termination_penalty = -200.0`.
+- Failure avoidance: `termination_penalty = -200.0` uses the same full-fall
+  root-height definition as reset.
+- Joint-limit failure avoidance: hard joint position or velocity limit
+  violations receive `joint_limit_violation_penalty = -500.0`.
 
 ## Train
 

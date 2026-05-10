@@ -113,16 +113,104 @@ If validation detects a reset/failure, the script prints the exact line:
 error
 ```
 
-## Current Step 6 Status
+## Step 6 AHC Training Framework
 
-Step 6 currently includes:
+Step 6 implements the AHC (Adaptive Humanoid Control) training framework with
+terrain system and Phase 1 standing PPO workflow.
 
-- Terrain system `T0` to `T5`.
-- Phase 1 no-external-force standing environment.
-- PPO training with resume/checkpoint support.
-- Policy playback without training.
-- Standing-specific rewards for stillness, joint angle safety, USD velocity
-  limits, arm swing, and failure avoidance.
+### Terrain System (T0-T5)
+
+| Key | Type | Parameters |
+|-----|------|------------|
+| T0 | Flat plane | — |
+| T1 | 10° slope | slope=0.175 rad |
+| T2 | 20° slope | slope=0.349 rad |
+| T3 | 30° slope | slope=0.524 rad |
+| T4 | Stairs | step_height 0.05-0.15m, width 0.3m |
+| T5 | Irregular wave | amplitude 0.02-0.08m |
+
+### Phase 1 Standing PPO — Reward Design (22 Terms)
+
+The standing policy uses 22 reward terms organized into 7 categories:
+
+**Base Stability (5 terms):**
+| Reward | Weight | Purpose |
+|--------|--------|---------|
+| `is_alive` | +1.0 | Survival bonus per step |
+| `flat_orientation_l2` | -2.0 | Torso tilt penalty (projected gravity deviation) |
+| `base_height_l2` | -1.0 | Height deviation from 0.78m target |
+| `lin_vel_xy_l2` | -1.5 | Horizontal velocity penalty (standing = zero) |
+| `ang_vel_xy_l2` | -0.5 | Angular velocity penalty |
+
+**Energy & Smoothness (3 terms):**
+| Reward | Weight | Purpose |
+|--------|--------|---------|
+| `joint_torques_l2` | -2.5e-5 | Energy efficiency (tiny weight, regularization) |
+| `joint_vel_l2` | -2.0e-3 | Joint velocity smoothing |
+| `joint_acc_l2` | -5.0e-7 | Joint acceleration smoothing (tiny weight) |
+
+**Joint Safety (4 terms):**
+| Reward | Weight | Purpose |
+|--------|--------|---------|
+| `joint_pos_soft_limits_l2` | -12.0 | Penalty when joint pos exceeds 60% of USD range |
+| `joint_pos_hard_limits_l1` | -50.0 | Linear penalty for hard USD position limit excess |
+| `joint_vel_usd_limits_l1` | -8.0 | Penalty when joint vel exceeds 30% of USD velocity limit |
+| `joint_limit_violation_penalty` | -500.0 | Terminal penalty for any hard limit violation |
+
+**Foot Contact Quality (3 terms, via ankle contact sensors):**
+| Reward | Weight | Purpose |
+|--------|--------|---------|
+| `feet_slide` | -0.2 | Penalize foot sliding while in ground contact |
+| `feet_contact_presence` | -1.0 | Penalize missing foot contacts (encourage both feet down) |
+| `feet_contact_balance` | -0.5 | Penalize left/right contact force imbalance |
+
+**Arm & Posture (5 terms):**
+| Reward | Weight | Purpose |
+|--------|--------|---------|
+| `arm_swing_l2` | -2.0 | Penalize arm swing energy (keep arms still) |
+| `arm_swing_asymmetry_l2` | -4.0 | Penalize left/right arm imbalance |
+| `joint_deviation_waist` | -0.2 | Waist joints deviation from default pose |
+| `joint_deviation_arms` | -0.15 | Arm joints deviation from default pose |
+| `joint_symmetry_arms` | -0.2 | Left/right arm symmetry (7 joints per side) |
+
+**Action (1 term):**
+| Reward | Weight | Purpose |
+|--------|--------|---------|
+| `action_rate_l2` | -0.02 | Action change rate penalty |
+
+**Terminal (1 term):**
+| Reward | Weight | Purpose |
+|--------|--------|---------|
+| `termination_penalty` | -200.0 | Fall penalty (root height < 0.25m) |
+
+Design principles:
+- Hip/knee/ankle joints are **not** posture-constrained — the policy can adapt across terrain
+- Waist and arms are constrained to natural standing pose
+- Contact sensor rewards (feet_slide, presence, balance) enforce stable ground contact
+- Joint safety uses a layered approach: soft limits (60%) → hard limits → termination
+
+### Termination Conditions
+
+| Condition | Threshold |
+|-----------|-----------|
+| `time_out` | 60 seconds (1200 steps @ 50Hz) |
+| `root_height_below_minimum` | < 0.25m (full fall) |
+| `joint_pos_out_of_limit` | Hard USD position limit exceeded |
+| `joint_vel_out_of_limit` | Hard USD velocity limit exceeded |
+
+### Key Hyperparameters
+
+| Parameter | Value |
+|-----------|-------|
+| Action scale | 0.10 |
+| Episode length | 60s |
+| Foot/ground friction | static=2.0, dynamic=2.0 |
+| Env spacing | 4.0 |
+| Policy frequency | 50Hz (dt=0.005s, decimation=4) |
+| Observation | 93-dim (base_ang_vel + projected_gravity + joint_pos_rel + joint_vel_rel + last_action) |
+| Action | 29-dim joint position targets |
+| PPO Actor/Critic | [512, 256, 128], ELU activation |
+| PPO learning rate | 1e-3 (adaptive) |
 
 Detailed component notes live in:
 
