@@ -58,6 +58,9 @@ class StandEnvCfgTests(unittest.TestCase):
 
         self.assertEqual("joint_pos", stand_env_cfg.ACTION_TERM_NAME)
         self.assertEqual(0.10, stand_env_cfg.ACTION_SCALE)
+        self.assertEqual("soft", stand_env_cfg.ACTION_TARGET_LIMIT_KIND)
+        self.assertEqual(0.005, stand_env_cfg.ACTION_TARGET_LIMIT_MARGIN)
+        self.assertEqual(0.005, stand_env_cfg.JOINT_POS_LIMIT_TOLERANCE)
         self.assertEqual(
             ("base_ang_vel", "projected_gravity", "joint_pos_rel", "joint_vel_rel", "last_action"),
             stand_env_cfg.POLICY_OBSERVATION_TERMS,
@@ -72,6 +75,10 @@ class StandEnvCfgTests(unittest.TestCase):
         stand_env_cfg = self.load_module()
 
         self.assertEqual(60.0, stand_env_cfg.EPISODE_LENGTH_S)
+        self.assertEqual(5.0, stand_env_cfg.ALIVE_REWARD_WEIGHT)
+        self.assertEqual(-1.5, stand_env_cfg.ANG_VEL_XY_WEIGHT)
+        self.assertEqual(-5.0e-3, stand_env_cfg.JOINT_VEL_L2_WEIGHT)
+        self.assertEqual(-0.05, stand_env_cfg.ACTION_RATE_L2_WEIGHT)
         self.assertEqual(
             (
                 "is_alive",
@@ -96,24 +103,35 @@ class StandEnvCfgTests(unittest.TestCase):
                 "joint_symmetry_arms",
                 "termination_penalty",
                 "joint_limit_violation_penalty",
+                "collapse_ground_contact_penalty",
             ),
             stand_env_cfg.REWARD_TERMS,
         )
         self.assertEqual(
-            ("time_out", "root_height_below_minimum", "joint_pos_out_of_limit", "joint_vel_out_of_limit"),
+            (
+                "time_out",
+                "root_height_below_minimum",
+                "joint_pos_out_of_limit",
+                "joint_vel_out_of_limit",
+                "collapse_ground_contact",
+            ),
             stand_env_cfg.TERMINATION_TERMS,
         )
 
     def test_training_resets_on_full_fall_timeout_or_hard_joint_limits(self):
         stand_env_cfg = self.load_module()
 
-        self.assertEqual(0.25, stand_env_cfg.FALLEN_ROOT_HEIGHT_THRESHOLD)
+        self.assertEqual(0.45, stand_env_cfg.FALLEN_ROOT_HEIGHT_THRESHOLD)
         source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
         self.assertIn("self.episode_length_s = EPISODE_LENGTH_S", source)
         self.assertIn('"minimum_height": FALLEN_ROOT_HEIGHT_THRESHOLD', source)
+        self.assertIn("root_height_below_minimum_fn", source)
+        self.assertNotIn("func=mdp.root_height_below_minimum", source)
         self.assertNotIn("bad_orientation = DoneTerm", source)
         self.assertIn("joint_pos_out_of_limit = DoneTerm", source)
+        self.assertIn('"tolerance": JOINT_POS_LIMIT_TOLERANCE', source)
         self.assertIn("joint_vel_out_of_limit = DoneTerm", source)
+        self.assertIn("collapse_ground_contact = DoneTerm", source)
 
     def test_standing_penalties_are_strong_enough_to_avoid_joint_limit_deaths(self):
         stand_env_cfg = self.load_module()
@@ -123,30 +141,54 @@ class StandEnvCfgTests(unittest.TestCase):
         self.assertEqual(-8.0, stand_env_cfg.JOINT_VEL_USD_LIMIT_WEIGHT)
         self.assertEqual(-200.0, stand_env_cfg.TERMINATION_PENALTY_WEIGHT)
         self.assertEqual(-500.0, stand_env_cfg.JOINT_LIMIT_TERMINATION_PENALTY_WEIGHT)
+        self.assertEqual(3, stand_env_cfg.COLLAPSE_GROUND_CONTACT_MIN_LIMBS)
+        self.assertEqual(-500.0, stand_env_cfg.COLLAPSE_GROUND_CONTACT_PENALTY_WEIGHT)
 
         source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
+        self.assertIn("is_alive = RewTerm(func=mdp.is_alive, weight=ALIVE_REWARD_WEIGHT)", source)
+        self.assertIn("ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=ANG_VEL_XY_WEIGHT)", source)
+        self.assertIn("joint_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=JOINT_VEL_L2_WEIGHT)", source)
+        self.assertIn("action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=ACTION_RATE_L2_WEIGHT)", source)
+        self.assertIn("ClampedJointPositionActionCfg", source)
         self.assertIn("scale=ACTION_SCALE", source)
+        self.assertIn("limit_kind=ACTION_TARGET_LIMIT_KIND", source)
+        self.assertIn("limit_margin=ACTION_TARGET_LIMIT_MARGIN", source)
         self.assertIn("weight=JOINT_POS_SOFT_LIMIT_WEIGHT", source)
         self.assertIn("weight=JOINT_POS_HARD_LIMIT_WEIGHT", source)
         self.assertIn("weight=JOINT_VEL_USD_LIMIT_WEIGHT", source)
         self.assertIn("weight=TERMINATION_PENALTY_WEIGHT", source)
         self.assertIn("weight=JOINT_LIMIT_TERMINATION_PENALTY_WEIGHT", source)
-        self.assertIn("root_height_below_minimum_fn", source)
+        self.assertIn("root_height_below_minimum_event_fn", source)
         self.assertIn('"minimum_height": FALLEN_ROOT_HEIGHT_THRESHOLD', source)
         self.assertIn("joint_pos_hard_limits_l1_fn", source)
-        self.assertIn("joint_limit_violation_fn", source)
+        self.assertIn("joint_limit_violation_event_fn", source)
         self.assertIn("joint_vel_out_of_limit_fn", source)
         self.assertIn("joint_vel_usd_limits_l1_fn", source)
+        self.assertIn("collapse_ground_contact_event_fn", source)
+        self.assertIn("weight=COLLAPSE_GROUND_CONTACT_PENALTY_WEIGHT", source)
 
     def test_phase1_standing_uses_contact_sensor_rewards(self):
         stand_env_cfg = self.load_module()
 
         self.assertEqual("contact_forces", stand_env_cfg.CONTACT_SENSOR_NAME)
-        self.assertEqual("{ENV_REGEX_NS}/Robot/.*ankle_roll_link", stand_env_cfg.CONTACT_SENSOR_PRIM_PATH)
+        self.assertEqual(
+            "{ENV_REGEX_NS}/Robot/.*(ankle_roll_link|knee_link|elbow_link|wrist_yaw_link|rubber_hand)",
+            stand_env_cfg.CONTACT_SENSOR_PRIM_PATH,
+        )
         self.assertEqual(6, stand_env_cfg.CONTACT_SENSOR_HISTORY_LENGTH)
-        self.assertEqual(-0.2, stand_env_cfg.FEET_SLIDE_WEIGHT)
+        self.assertEqual(-0.5, stand_env_cfg.FEET_SLIDE_WEIGHT)
         self.assertEqual(-1.0, stand_env_cfg.FEET_CONTACT_PRESENCE_WEIGHT)
         self.assertEqual(-0.5, stand_env_cfg.FEET_CONTACT_BALANCE_WEIGHT)
+        self.assertEqual(("left_ankle_roll_link", "left_knee_link"), stand_env_cfg.COLLAPSE_LEFT_LEG_BODY_NAMES)
+        self.assertEqual(("right_ankle_roll_link", "right_knee_link"), stand_env_cfg.COLLAPSE_RIGHT_LEG_BODY_NAMES)
+        self.assertEqual(
+            ("left_elbow_link", "left_wrist_yaw_link", "left_rubber_hand"),
+            stand_env_cfg.COLLAPSE_LEFT_ARM_BODY_NAMES,
+        )
+        self.assertEqual(
+            ("right_elbow_link", "right_wrist_yaw_link", "right_rubber_hand"),
+            stand_env_cfg.COLLAPSE_RIGHT_ARM_BODY_NAMES,
+        )
 
         source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
         self.assertIn("ContactSensorCfg", source)
@@ -154,6 +196,7 @@ class StandEnvCfgTests(unittest.TestCase):
         self.assertIn("feet_slide_fn", source)
         self.assertIn("feet_contact_presence_fn", source)
         self.assertIn("feet_contact_balance_fn", source)
+        self.assertIn("COLLAPSE_LEFT_LEG_BODY_NAMES", source)
 
     def test_natural_posture_rewards_do_not_constrain_hips_knees_or_ankles(self):
         stand_env_cfg = self.load_module()

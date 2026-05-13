@@ -129,24 +129,24 @@ terrain system and Phase 1 standing PPO workflow.
 | T4 | Stairs | step_height 0.05-0.15m, width 0.3m |
 | T5 | Irregular wave | amplitude 0.02-0.08m |
 
-### Phase 1 Standing PPO — Reward Design (22 Terms)
+### Phase 1 Standing PPO — Reward Design (23 Terms)
 
-The standing policy uses 22 reward terms organized into 7 categories:
+The standing policy uses 23 reward terms organized into 8 categories:
 
 **Base Stability (5 terms):**
 | Reward | Weight | Purpose |
 |--------|--------|---------|
-| `is_alive` | +1.0 | Survival bonus per step |
+| `is_alive` | +5.0 | Survival bonus per step |
 | `flat_orientation_l2` | -2.0 | Torso tilt penalty (projected gravity deviation) |
 | `base_height_l2` | -1.0 | Height deviation from 0.78m target |
 | `lin_vel_xy_l2` | -1.5 | Horizontal velocity penalty (standing = zero) |
-| `ang_vel_xy_l2` | -0.5 | Angular velocity penalty |
+| `ang_vel_xy_l2` | -1.5 | Angular velocity penalty |
 
 **Energy & Smoothness (3 terms):**
 | Reward | Weight | Purpose |
 |--------|--------|---------|
 | `joint_torques_l2` | -2.5e-5 | Energy efficiency (tiny weight, regularization) |
-| `joint_vel_l2` | -2.0e-3 | Joint velocity smoothing |
+| `joint_vel_l2` | -5.0e-3 | Joint velocity smoothing |
 | `joint_acc_l2` | -5.0e-7 | Joint acceleration smoothing (tiny weight) |
 
 **Joint Safety (4 terms):**
@@ -157,12 +157,14 @@ The standing policy uses 22 reward terms organized into 7 categories:
 | `joint_vel_usd_limits_l1` | -8.0 | Penalty when joint vel exceeds 30% of USD velocity limit |
 | `joint_limit_violation_penalty` | -500.0 | Terminal penalty for any hard limit violation |
 
-**Foot Contact Quality (3 terms, via ankle contact sensors):**
+**Foot Contact Quality (3 terms, via expanded contact sensors):**
 | Reward | Weight | Purpose |
 |--------|--------|---------|
-| `feet_slide` | -0.2 | Penalize foot sliding while in ground contact |
+| `feet_slide` | -0.5 | Penalize foot sliding while in ground contact |
 | `feet_contact_presence` | -1.0 | Penalize missing foot contacts (encourage both feet down) |
 | `feet_contact_balance` | -0.5 | Penalize left/right contact force imbalance |
+
+Contact sensors cover: ankle_roll_link, knee_link, elbow_link, wrist_yaw_link, rubber_hand.
 
 **Arm & Posture (5 terms):**
 | Reward | Weight | Purpose |
@@ -176,39 +178,44 @@ The standing policy uses 22 reward terms organized into 7 categories:
 **Action (1 term):**
 | Reward | Weight | Purpose |
 |--------|--------|---------|
-| `action_rate_l2` | -0.02 | Action change rate penalty |
+| `action_rate_l2` | -0.05 | Action change rate penalty |
 
-**Terminal (1 term):**
+**Terminal (2 terms):**
 | Reward | Weight | Purpose |
 |--------|--------|---------|
-| `termination_penalty` | -200.0 | Fall penalty (root height < 0.25m) |
+| `termination_penalty` | -200.0 | Fall penalty (root height < 0.45m) |
+| `collapse_ground_contact_penalty` | -500.0 | Multi-limb collapse penalty (3+ limbs ground contact) |
 
 Design principles:
 - Hip/knee/ankle joints are **not** posture-constrained — the policy can adapt across terrain
 - Waist and arms are constrained to natural standing pose
 - Contact sensor rewards (feet_slide, presence, balance) enforce stable ground contact
 - Joint safety uses a layered approach: soft limits (60%) → hard limits → termination
+- Action targets are clamped to USD joint limits via `ClampedJointPositionAction` (soft limits, 0.005 margin)
 
 ### Termination Conditions
 
 | Condition | Threshold |
 |-----------|-----------|
 | `time_out` | 60 seconds (1200 steps @ 50Hz) |
-| `root_height_below_minimum` | < 0.25m (full fall) |
-| `joint_pos_out_of_limit` | Hard USD position limit exceeded |
+| `root_height_below_minimum` | < 0.45m (full fall) |
+| `joint_pos_out_of_limit` | Hard USD position limit exceeded (0.005 tolerance) |
 | `joint_vel_out_of_limit` | Hard USD velocity limit exceeded |
+| `collapse_ground_contact` | 3+ limb groups touching ground |
 
 ### Key Hyperparameters
 
 | Parameter | Value |
 |-----------|-------|
 | Action scale | 0.10 |
+| Action limit kind | soft (60% of USD range) |
+| Action limit margin | 0.005 |
 | Episode length | 60s |
 | Foot/ground friction | static=2.0, dynamic=2.0 |
 | Env spacing | 4.0 |
 | Policy frequency | 50Hz (dt=0.005s, decimation=4) |
 | Observation | 93-dim (base_ang_vel + projected_gravity + joint_pos_rel + joint_vel_rel + last_action) |
-| Action | 29-dim joint position targets |
+| Action | 29-dim joint position targets (clamped to USD limits) |
 | PPO Actor/Critic | [512, 256, 128], ELU activation |
 | PPO learning rate | 1e-3 (adaptive) |
 

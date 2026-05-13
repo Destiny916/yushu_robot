@@ -43,6 +43,34 @@ class StandRewardTests(unittest.TestCase):
             self.fail("stand_rewards module should exist for Phase 1 standing reward helpers")
         return importlib.import_module("stand_rewards")
 
+    def test_arm_swing_cfgs_cover_shoulders_elbows_and_wrists(self):
+        stand_rewards = self.load_module()
+
+        self.assertEqual(
+            [
+                "left_shoulder_pitch_joint",
+                "left_shoulder_roll_joint",
+                "left_shoulder_yaw_joint",
+                "left_elbow_joint",
+                "left_wrist_roll_joint",
+                "left_wrist_pitch_joint",
+                "left_wrist_yaw_joint",
+            ],
+            stand_rewards.LEFT_ARM_SWING_JOINT_NAMES,
+        )
+        self.assertEqual(
+            [
+                "right_shoulder_pitch_joint",
+                "right_shoulder_roll_joint",
+                "right_shoulder_yaw_joint",
+                "right_elbow_joint",
+                "right_wrist_roll_joint",
+                "right_wrist_pitch_joint",
+                "right_wrist_yaw_joint",
+            ],
+            stand_rewards.RIGHT_ARM_SWING_JOINT_NAMES,
+        )
+
     def test_joint_pos_soft_limits_use_usd_joint_limits_not_default_pose(self):
         stand_rewards = self.load_module()
 
@@ -125,6 +153,28 @@ class StandRewardTests(unittest.TestCase):
 
         self.assertFalse(is_out_of_limit.item())
 
+    def test_joint_pos_out_of_limit_ignores_small_solver_tolerance_overshoot(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.joint_pos = torch.tensor([[1.002]], dtype=torch.float32)
+                self.joint_pos_limits = torch.tensor([[[-1.0, 1.0]]], dtype=torch.float32)
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+
+        is_out_of_limit = stand_rewards.joint_pos_out_of_limit(
+            FakeEnv(), asset_cfg=FakeSceneEntityCfg("robot"), tolerance=0.005
+        )
+
+        self.assertFalse(is_out_of_limit.item())
+
     def test_joint_vel_out_of_limit_checks_usd_velocity_limits(self):
         stand_rewards = self.load_module()
 
@@ -166,6 +216,53 @@ class StandRewardTests(unittest.TestCase):
         is_violated = stand_rewards.joint_limit_violation(FakeEnv(), asset_cfg=FakeSceneEntityCfg("robot"))
 
         self.assertEqual([False, True, True], is_violated.tolist())
+
+    def test_joint_limit_violation_event_counteracts_reward_manager_dt_scaling(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.joint_pos = torch.tensor([[0.0], [1.2], [0.0]], dtype=torch.float32)
+                self.joint_pos_limits = torch.tensor([[[-1.0, 1.0]], [[-1.0, 1.0]], [[-1.0, 1.0]]])
+                self.joint_vel = torch.tensor([[5.0], [5.0], [11.0]], dtype=torch.float32)
+                self.joint_vel_limits = torch.tensor([[10.0], [10.0], [10.0]], dtype=torch.float32)
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+                self.step_dt = 0.02
+
+        penalty_signal = stand_rewards.joint_limit_violation_event(
+            FakeEnv(), asset_cfg=FakeSceneEntityCfg("robot")
+        )
+
+        self.assertEqual([0.0, 50.0, 50.0], penalty_signal.tolist())
+
+    def test_root_height_below_minimum_event_counteracts_reward_manager_dt_scaling(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.root_pos_w = torch.tensor([[0.0, 0.0, 0.30], [0.0, 0.0, 0.20]], dtype=torch.float32)
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+                self.step_dt = 0.02
+
+        penalty_signal = stand_rewards.root_height_below_minimum_event(
+            FakeEnv(), minimum_height=0.25, asset_cfg=FakeSceneEntityCfg("robot")
+        )
+
+        self.assertEqual([0.0, 50.0], penalty_signal.tolist())
 
     def test_joint_pos_hard_limits_l1_penalizes_only_usd_limit_excess(self):
         stand_rewards = self.load_module()
@@ -255,6 +352,36 @@ class StandRewardTests(unittest.TestCase):
             FakeEnv(),
             minimum_height=0.25,
             asset_cfg=FakeSceneEntityCfg("robot"),
+        )
+
+        self.assertEqual([True, False, False], is_fallen.tolist())
+
+    def test_root_height_below_minimum_uses_height_relative_to_terrain_origin(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.root_pos_w = torch.tensor(
+                    [[0.0, 0.0, 0.84], [0.0, 0.0, 1.00], [0.0, 0.0, 0.46]], dtype=torch.float32
+                )
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeScene(dict):
+            def __init__(self):
+                super().__init__({"robot": FakeAsset()})
+                self.env_origins = torch.tensor(
+                    [[0.0, 0.0, 0.40], [0.0, 0.0, 0.40], [0.0, 0.0, 0.00]], dtype=torch.float32
+                )
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = FakeScene()
+
+        is_fallen = stand_rewards.root_height_below_minimum(
+            FakeEnv(), minimum_height=0.45, asset_cfg=FakeSceneEntityCfg("robot")
         )
 
         self.assertEqual([True, False, False], is_fallen.tolist())
@@ -372,6 +499,100 @@ class StandRewardTests(unittest.TestCase):
 
         self.assertAlmostEqual(0.5, penalty[0].item(), places=6)
         self.assertAlmostEqual(0.0, penalty[1].item(), places=6)
+
+    def test_collapse_ground_contact_requires_at_least_three_limbs(self):
+        stand_rewards = self.load_module()
+
+        class FakeContactData:
+            def __init__(self):
+                forces = torch.zeros((6, 1, 10, 3), dtype=torch.float32)
+                forces[0, 0, [0, 1], 2] = 5.0  # feet only
+                forces[1, 0, [0, 1, 4], 2] = 5.0  # feet plus left arm only
+                forces[2, 0, [0, 1, 8, 9], 2] = 5.0  # feet plus both hands
+                forces[3, 0, [2, 3, 4, 5], 2] = 5.0  # knees plus elbows
+                forces[4, 0, [0, 5], 2] = 5.0  # incomplete diagonal contact
+                forces[5, 0, [0, 1, 5], 2] = 5.0  # both legs plus right arm
+                self.net_forces_w_history = forces
+
+        class FakeContactSensor:
+            def __init__(self):
+                self.data = FakeContactData()
+
+        class FakeScene(dict):
+            @property
+            def sensors(self):
+                return self
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = FakeScene({"contact_forces": FakeContactSensor()})
+
+        left_leg_cfg = FakeSceneEntityCfg("contact_forces")
+        left_leg_cfg.body_ids = [0, 2]
+        right_leg_cfg = FakeSceneEntityCfg("contact_forces")
+        right_leg_cfg.body_ids = [1, 3]
+        left_arm_cfg = FakeSceneEntityCfg("contact_forces")
+        left_arm_cfg.body_ids = [4, 6, 8]
+        right_arm_cfg = FakeSceneEntityCfg("contact_forces")
+        right_arm_cfg.body_ids = [5, 7, 9]
+
+        is_collapsed = stand_rewards.collapse_ground_contact(
+            FakeEnv(),
+            left_leg_sensor_cfg=left_leg_cfg,
+            right_leg_sensor_cfg=right_leg_cfg,
+            left_arm_sensor_cfg=left_arm_cfg,
+            right_arm_sensor_cfg=right_arm_cfg,
+            contact_threshold=1.0,
+            min_contacting_limbs=3,
+        )
+
+        self.assertEqual([False, True, True, True, False, True], is_collapsed.tolist())
+
+    def test_collapse_ground_contact_event_counteracts_reward_manager_dt_scaling(self):
+        stand_rewards = self.load_module()
+
+        class FakeContactData:
+            def __init__(self):
+                forces = torch.zeros((3, 1, 4, 3), dtype=torch.float32)
+                forces[0, 0, [0, 1, 2, 3], 2] = 5.0
+                forces[1, 0, [0, 1], 2] = 5.0
+                forces[2, 0, [0, 1, 3], 2] = 5.0
+                self.net_forces_w_history = forces
+
+        class FakeContactSensor:
+            def __init__(self):
+                self.data = FakeContactData()
+
+        class FakeScene(dict):
+            @property
+            def sensors(self):
+                return self
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = FakeScene({"contact_forces": FakeContactSensor()})
+                self.step_dt = 0.02
+
+        left_leg_cfg = FakeSceneEntityCfg("contact_forces")
+        left_leg_cfg.body_ids = [0]
+        right_leg_cfg = FakeSceneEntityCfg("contact_forces")
+        right_leg_cfg.body_ids = [1]
+        left_arm_cfg = FakeSceneEntityCfg("contact_forces")
+        left_arm_cfg.body_ids = [2]
+        right_arm_cfg = FakeSceneEntityCfg("contact_forces")
+        right_arm_cfg.body_ids = [3]
+
+        penalty_signal = stand_rewards.collapse_ground_contact_event(
+            FakeEnv(),
+            left_leg_sensor_cfg=left_leg_cfg,
+            right_leg_sensor_cfg=right_leg_cfg,
+            left_arm_sensor_cfg=left_arm_cfg,
+            right_arm_sensor_cfg=right_arm_cfg,
+            contact_threshold=1.0,
+            min_contacting_limbs=3,
+        )
+
+        self.assertEqual([50.0, 0.0, 50.0], penalty_signal.tolist())
 
     def test_joint_deviation_symmetry_uses_deviation_from_default_pose(self):
         stand_rewards = self.load_module()

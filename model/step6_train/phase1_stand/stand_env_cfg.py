@@ -29,19 +29,29 @@ ROBOT_PRIM_PATH = "{ENV_REGEX_NS}/Robot"
 USE_TERRAIN_ORIGINS = False
 ACTION_TERM_NAME = "joint_pos"
 ACTION_SCALE = 0.10
+ACTION_TARGET_LIMIT_KIND = "soft"
+ACTION_TARGET_LIMIT_MARGIN = 0.005
 STANDING_STATIC_FRICTION = 2.0
 STANDING_DYNAMIC_FRICTION = 2.0
 RESET_EVENT_TERMS = ("reset_base", "reset_joints")
 EXTERNAL_FORCE_EVENT_TERMS = ()
 EPISODE_LENGTH_S = 60.0
-FALLEN_ROOT_HEIGHT_THRESHOLD = 0.25
+FALLEN_ROOT_HEIGHT_THRESHOLD = 0.45
+ALIVE_REWARD_WEIGHT = 5.0
 CONTACT_SENSOR_NAME = "contact_forces"
-CONTACT_SENSOR_PRIM_PATH = "{ENV_REGEX_NS}/Robot/.*ankle_roll_link"
+CONTACT_SENSOR_PRIM_PATH = "{ENV_REGEX_NS}/Robot/.*(ankle_roll_link|knee_link|elbow_link|wrist_yaw_link|rubber_hand)"
 CONTACT_SENSOR_HISTORY_LENGTH = 6
 FEET_CONTACT_THRESHOLD = 1.0
-FEET_SLIDE_WEIGHT = -0.2
+FEET_SLIDE_WEIGHT = -0.5
 FEET_CONTACT_PRESENCE_WEIGHT = -1.0
 FEET_CONTACT_BALANCE_WEIGHT = -0.5
+COLLAPSE_LEFT_LEG_BODY_NAMES = ("left_ankle_roll_link", "left_knee_link")
+COLLAPSE_RIGHT_LEG_BODY_NAMES = ("right_ankle_roll_link", "right_knee_link")
+COLLAPSE_LEFT_ARM_BODY_NAMES = ("left_elbow_link", "left_wrist_yaw_link", "left_rubber_hand")
+COLLAPSE_RIGHT_ARM_BODY_NAMES = ("right_elbow_link", "right_wrist_yaw_link", "right_rubber_hand")
+COLLAPSE_GROUND_CONTACT_THRESHOLD = 1.0
+COLLAPSE_GROUND_CONTACT_MIN_LIMBS = 3
+COLLAPSE_GROUND_CONTACT_PENALTY_WEIGHT = -500.0
 NATURAL_POSTURE_WAIST_JOINTS = ("waist_.*_joint",)
 NATURAL_POSTURE_ARM_JOINTS = (
     ".*_shoulder_pitch_joint",
@@ -71,9 +81,13 @@ RIGHT_ARM_SYMMETRY_JOINTS = (
 JOINT_DEVIATION_WAIST_WEIGHT = -0.2
 JOINT_DEVIATION_ARMS_WEIGHT = -0.15
 JOINT_SYMMETRY_ARMS_WEIGHT = -0.2
+ANG_VEL_XY_WEIGHT = -1.5
+JOINT_VEL_L2_WEIGHT = -5.0e-3
+ACTION_RATE_L2_WEIGHT = -0.05
 JOINT_POS_SOFT_LIMIT_WEIGHT = -12.0
 JOINT_POS_HARD_LIMIT_WEIGHT = -50.0
 JOINT_VEL_USD_LIMIT_WEIGHT = -8.0
+JOINT_POS_LIMIT_TOLERANCE = 0.005
 TERMINATION_PENALTY_WEIGHT = -200.0
 JOINT_LIMIT_TERMINATION_PENALTY_WEIGHT = -500.0
 POLICY_OBSERVATION_TERMS = (
@@ -106,8 +120,15 @@ REWARD_TERMS = (
     "joint_symmetry_arms",
     "termination_penalty",
     "joint_limit_violation_penalty",
+    "collapse_ground_contact_penalty",
 )
-TERMINATION_TERMS = ("time_out", "root_height_below_minimum", "joint_pos_out_of_limit", "joint_vel_out_of_limit")
+TERMINATION_TERMS = (
+    "time_out",
+    "root_height_below_minimum",
+    "joint_pos_out_of_limit",
+    "joint_vel_out_of_limit",
+    "collapse_ground_contact",
+)
 
 
 def bootstrap_isaaclab_paths() -> None:
@@ -142,13 +163,16 @@ def create_g1_stand_no_external_force_env_cfg(
     from isaaclab.sensors import ContactSensorCfg
     from isaaclab.terrains import TerrainImporterCfg
     from isaaclab.utils import configclass
+    from stand_actions import ClampedJointPositionActionCfg
     from stand_rewards import arm_swing_asymmetry_l2 as arm_swing_asymmetry_l2_fn
     from stand_rewards import arm_swing_l2 as arm_swing_l2_fn
+    from stand_rewards import collapse_ground_contact as collapse_ground_contact_fn
+    from stand_rewards import collapse_ground_contact_event as collapse_ground_contact_event_fn
     from stand_rewards import feet_contact_balance as feet_contact_balance_fn
     from stand_rewards import feet_contact_presence as feet_contact_presence_fn
     from stand_rewards import feet_slide as feet_slide_fn
     from stand_rewards import joint_deviation_symmetry_l1 as joint_deviation_symmetry_l1_fn
-    from stand_rewards import joint_limit_violation as joint_limit_violation_fn
+    from stand_rewards import joint_limit_violation_event as joint_limit_violation_event_fn
     from stand_rewards import joint_pos_hard_limits_l1 as joint_pos_hard_limits_l1_fn
     from stand_rewards import joint_pos_out_of_limit as joint_pos_out_of_limit_fn
     from stand_rewards import joint_pos_soft_limits_l2 as joint_pos_soft_limits_l2_fn
@@ -158,13 +182,14 @@ def create_g1_stand_no_external_force_env_cfg(
     from stand_rewards import make_left_arm_swing_cfg as make_left_arm_swing_cfg_fn
     from stand_rewards import make_right_arm_swing_cfg as make_right_arm_swing_cfg_fn
     from stand_rewards import root_height_below_minimum as root_height_below_minimum_fn
+    from stand_rewards import root_height_below_minimum_event as root_height_below_minimum_event_fn
 
     globals()["lin_vel_xy_l2_fn"] = lin_vel_xy_l2_fn
     globals()["joint_pos_soft_limits_l2_fn"] = joint_pos_soft_limits_l2_fn
     globals()["joint_pos_hard_limits_l1_fn"] = joint_pos_hard_limits_l1_fn
     globals()["joint_pos_out_of_limit_fn"] = joint_pos_out_of_limit_fn
     globals()["joint_vel_out_of_limit_fn"] = joint_vel_out_of_limit_fn
-    globals()["joint_limit_violation_fn"] = joint_limit_violation_fn
+    globals()["joint_limit_violation_event_fn"] = joint_limit_violation_event_fn
     globals()["feet_slide_fn"] = feet_slide_fn
     globals()["feet_contact_presence_fn"] = feet_contact_presence_fn
     globals()["feet_contact_balance_fn"] = feet_contact_balance_fn
@@ -175,6 +200,28 @@ def create_g1_stand_no_external_force_env_cfg(
     globals()["make_right_arm_swing_cfg_fn"] = make_right_arm_swing_cfg_fn
     globals()["joint_vel_usd_limits_l1_fn"] = joint_vel_usd_limits_l1_fn
     globals()["root_height_below_minimum_fn"] = root_height_below_minimum_fn
+    globals()["root_height_below_minimum_event_fn"] = root_height_below_minimum_event_fn
+    globals()["ClampedJointPositionActionCfg"] = ClampedJointPositionActionCfg
+    globals()["collapse_ground_contact_fn"] = collapse_ground_contact_fn
+    globals()["collapse_ground_contact_event_fn"] = collapse_ground_contact_event_fn
+
+    def make_collapse_ground_contact_params() -> dict:
+        return {
+            "left_leg_sensor_cfg": SceneEntityCfg(
+                CONTACT_SENSOR_NAME, body_names=list(COLLAPSE_LEFT_LEG_BODY_NAMES), preserve_order=True
+            ),
+            "right_leg_sensor_cfg": SceneEntityCfg(
+                CONTACT_SENSOR_NAME, body_names=list(COLLAPSE_RIGHT_LEG_BODY_NAMES), preserve_order=True
+            ),
+            "left_arm_sensor_cfg": SceneEntityCfg(
+                CONTACT_SENSOR_NAME, body_names=list(COLLAPSE_LEFT_ARM_BODY_NAMES), preserve_order=True
+            ),
+            "right_arm_sensor_cfg": SceneEntityCfg(
+                CONTACT_SENSOR_NAME, body_names=list(COLLAPSE_RIGHT_ARM_BODY_NAMES), preserve_order=True
+            ),
+            "contact_threshold": COLLAPSE_GROUND_CONTACT_THRESHOLD,
+            "min_contacting_limbs": COLLAPSE_GROUND_CONTACT_MIN_LIMBS,
+        }
 
     terrain_cfg = get_terrain_cfg(terrain_key)
     robot_cfg = G1_LOCAL_CFG.replace(prim_path=ROBOT_PRIM_PATH)
@@ -217,11 +264,13 @@ def create_g1_stand_no_external_force_env_cfg(
     class ActionsCfg:
         """Joint position action over all G1 joints."""
 
-        joint_pos = mdp.JointPositionActionCfg(
+        joint_pos = ClampedJointPositionActionCfg(
             asset_name="robot",
             joint_names=[".*"],
             scale=ACTION_SCALE,
             use_default_offset=True,
+            limit_kind=ACTION_TARGET_LIMIT_KIND,
+            limit_margin=ACTION_TARGET_LIMIT_MARGIN,
         )
 
     @configclass
@@ -270,13 +319,13 @@ def create_g1_stand_no_external_force_env_cfg(
     class RewardsCfg:
         """Standing rewards for the no-external-force PPO baseline."""
 
-        is_alive = RewTerm(func=mdp.is_alive, weight=1.0)
+        is_alive = RewTerm(func=mdp.is_alive, weight=ALIVE_REWARD_WEIGHT)
         flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
         base_height_l2 = RewTerm(func=mdp.base_height_l2, weight=-1.0, params={"target_height": 0.78})
         lin_vel_xy_l2 = RewTerm(func=lin_vel_xy_l2_fn, weight=-1.5)
-        ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.5)
+        ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=ANG_VEL_XY_WEIGHT)
         joint_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-2.5e-5)
-        joint_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=-2.0e-3)
+        joint_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=JOINT_VEL_L2_WEIGHT)
         joint_pos_soft_limits_l2 = RewTerm(func=joint_pos_soft_limits_l2_fn, weight=JOINT_POS_SOFT_LIMIT_WEIGHT)
         joint_pos_hard_limits_l1 = RewTerm(func=joint_pos_hard_limits_l1_fn, weight=JOINT_POS_HARD_LIMIT_WEIGHT)
         joint_vel_usd_limits_l1 = RewTerm(func=joint_vel_usd_limits_l1_fn, weight=JOINT_VEL_USD_LIMIT_WEIGHT)
@@ -327,7 +376,7 @@ def create_g1_stand_no_external_force_env_cfg(
             },
         )
         joint_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-5.0e-7)
-        action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
+        action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=ACTION_RATE_L2_WEIGHT)
         joint_deviation_waist = RewTerm(
             func=mdp.joint_deviation_l1,
             weight=JOINT_DEVIATION_WAIST_WEIGHT,
@@ -351,13 +400,19 @@ def create_g1_stand_no_external_force_env_cfg(
             },
         )
         termination_penalty = RewTerm(
-            func=root_height_below_minimum_fn,
+            func=root_height_below_minimum_event_fn,
             weight=TERMINATION_PENALTY_WEIGHT,
             params={"minimum_height": FALLEN_ROOT_HEIGHT_THRESHOLD},
         )
         joint_limit_violation_penalty = RewTerm(
-            func=joint_limit_violation_fn,
+            func=joint_limit_violation_event_fn,
             weight=JOINT_LIMIT_TERMINATION_PENALTY_WEIGHT,
+            params={"tolerance": JOINT_POS_LIMIT_TOLERANCE},
+        )
+        collapse_ground_contact_penalty = RewTerm(
+            func=collapse_ground_contact_event_fn,
+            weight=COLLAPSE_GROUND_CONTACT_PENALTY_WEIGHT,
+            params=make_collapse_ground_contact_params(),
         )
 
     @configclass
@@ -366,11 +421,18 @@ def create_g1_stand_no_external_force_env_cfg(
 
         time_out = DoneTerm(func=mdp.time_out, time_out=True)
         root_height_below_minimum = DoneTerm(
-            func=mdp.root_height_below_minimum,
+            func=root_height_below_minimum_fn,
             params={"minimum_height": FALLEN_ROOT_HEIGHT_THRESHOLD},
         )
-        joint_pos_out_of_limit = DoneTerm(func=joint_pos_out_of_limit_fn)
+        joint_pos_out_of_limit = DoneTerm(
+            func=joint_pos_out_of_limit_fn,
+            params={"tolerance": JOINT_POS_LIMIT_TOLERANCE},
+        )
         joint_vel_out_of_limit = DoneTerm(func=joint_vel_out_of_limit_fn)
+        collapse_ground_contact = DoneTerm(
+            func=collapse_ground_contact_fn,
+            params=make_collapse_ground_contact_params(),
+        )
 
     @configclass
     class G1StandNoExternalForceEnvCfg(ManagerBasedRLEnvCfg):

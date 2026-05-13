@@ -27,24 +27,39 @@ local Unitree G1 robot.
 The standing policy is shaped to remain still and avoid early joint-limit
 failures:
 
-- Base stability: alive reward, flat orientation, height, horizontal velocity,
-  and angular velocity.
-- Smoothness: joint velocity, joint acceleration, and action-rate penalties.
+- Base stability: alive reward `+5.0`, flat orientation, height, horizontal velocity,
+  and stronger angular velocity penalty `-1.5`.
+- Smoothness: stronger joint velocity `-5.0e-3`, joint acceleration, and
+  action-rate `-0.05` penalties.
 - Joint safety: USD joint-position limit proximity, hard USD joint-position
   excess, and USD joint-velocity limit threshold at 30%.
-- Foot contact quality: ankle contact sensors penalize foot sliding, missing
-  foot contacts, and left/right contact-force imbalance.
+- Foot contact quality: ankle contact sensors penalize stronger foot sliding
+  `-0.5`, missing foot contacts, and left/right contact-force imbalance.
 - Natural posture: waist and arm joints are encouraged to stay near the default
   standing pose, with left/right arm symmetry. Hip, knee, and ankle joints are
   intentionally not posture-constrained so the policy can adapt across terrain.
-- Reset conditions: 60-second timeout, full-fall root height below `0.25m`,
-  hard USD joint-position limit violation, or hard USD joint-velocity limit
-  violation.
-- Arm stillness: arm swing and left/right arm swing asymmetry penalties.
+- Reset conditions: 60-second timeout, full-fall root height below `0.45m`
+  relative to the terrain/env origin height, hard USD joint-position limit
+  violation, or hard USD joint-velocity limit violation. Joint-position resets
+  use a `0.005rad` tolerance to ignore tiny solver overshoot. The episode also
+  resets when any three of the four limb groups contact the ground at the same
+  step: each leg is counted by ankle or knee contact, and each arm is counted
+  by elbow, wrist-yaw, or rubber-hand contact.
+- Action targets: policy outputs are still interpreted as
+  `default_joint_pos + action * 0.10`, then the final joint-position target is
+  clamped into USD soft joint limits with a `0.005rad` margin before being sent
+  to the actuator.
+- Arm stillness: arm swing covers shoulder pitch/roll/yaw, elbow, and wrist
+  joints, plus left/right arm swing asymmetry penalties.
 - Failure avoidance: `termination_penalty = -200.0` uses the same full-fall
-  root-height definition as reset.
+  root-height definition as reset. This event reward counteracts IsaacLab
+  RewardManager `dt` scaling, so a fall step receives the configured `-200.0`.
 - Joint-limit failure avoidance: hard joint position or velocity limit
-  violations receive `joint_limit_violation_penalty = -500.0`.
+  violations receive `joint_limit_violation_penalty = -500.0`. This is also an
+  event-scaled reward, so a hard joint-limit reset receives the configured
+  `-500.0` on the violating step.
+- Collapse-contact failure avoidance: three-limb ground-contact resets receive
+  `collapse_ground_contact_penalty = -500.0` on the violating step.
 
 ## Train
 

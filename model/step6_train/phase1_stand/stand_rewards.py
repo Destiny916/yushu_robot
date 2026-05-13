@@ -12,8 +12,24 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-LEFT_ARM_SWING_JOINT_NAMES = ["left_shoulder_pitch_joint", "left_elbow_joint"]
-RIGHT_ARM_SWING_JOINT_NAMES = ["right_shoulder_pitch_joint", "right_elbow_joint"]
+LEFT_ARM_SWING_JOINT_NAMES = [
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+]
+RIGHT_ARM_SWING_JOINT_NAMES = [
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+]
 
 
 def make_left_arm_swing_cfg() -> SceneEntityCfg:
@@ -73,14 +89,128 @@ def feet_contact_balance(
     return torch.abs(left_force - right_force) / (left_force + right_force + eps)
 
 
+def _limb_has_contact(
+    env: "ManagerBasedRLEnv",
+    sensor_cfg: SceneEntityCfg,
+    contact_threshold: float,
+) -> torch.Tensor:
+    """Return true when any selected body in a limb is in contact."""
+    contacts = _contact_force_norm_history(env, sensor_cfg) > contact_threshold
+    return torch.any(contacts, dim=1)
+
+
+def collapse_ground_contact(
+    env: "ManagerBasedRLEnv",
+    left_leg_sensor_cfg: SceneEntityCfg,
+    right_leg_sensor_cfg: SceneEntityCfg,
+    left_arm_sensor_cfg: SceneEntityCfg,
+    right_arm_sensor_cfg: SceneEntityCfg,
+    contact_threshold: float = 1.0,
+    min_contacting_limbs: int = 3,
+) -> torch.Tensor:
+    """Return true when at least the configured number of limb groups contact the ground."""
+    limb_contacts = torch.stack(
+        (
+            _limb_has_contact(env, left_leg_sensor_cfg, contact_threshold),
+            _limb_has_contact(env, right_leg_sensor_cfg, contact_threshold),
+            _limb_has_contact(env, left_arm_sensor_cfg, contact_threshold),
+            _limb_has_contact(env, right_arm_sensor_cfg, contact_threshold),
+        ),
+        dim=1,
+    )
+    return torch.sum(limb_contacts.int(), dim=1) >= min_contacting_limbs
+
+
+def all_limbs_ground_contact(
+    env: "ManagerBasedRLEnv",
+    left_leg_sensor_cfg: SceneEntityCfg,
+    right_leg_sensor_cfg: SceneEntityCfg,
+    left_arm_sensor_cfg: SceneEntityCfg,
+    right_arm_sensor_cfg: SceneEntityCfg,
+    contact_threshold: float = 1.0,
+) -> torch.Tensor:
+    """Backward-compatible four-limb collapse predicate."""
+    return collapse_ground_contact(
+        env,
+        left_leg_sensor_cfg=left_leg_sensor_cfg,
+        right_leg_sensor_cfg=right_leg_sensor_cfg,
+        left_arm_sensor_cfg=left_arm_sensor_cfg,
+        right_arm_sensor_cfg=right_arm_sensor_cfg,
+        contact_threshold=contact_threshold,
+        min_contacting_limbs=4,
+    )
+
+
 def root_height_below_minimum(
     env: "ManagerBasedRLEnv",
     minimum_height: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Return true when the robot root height matches the full-fall reset condition."""
+    """Return true when the robot root height above its terrain origin is below the limit."""
     asset = env.scene[asset_cfg.name]
-    return asset.data.root_pos_w[:, 2] < minimum_height
+    root_height = asset.data.root_pos_w[:, 2]
+    env_origins = getattr(env.scene, "env_origins", None)
+    if env_origins is not None:
+        root_height = root_height - env_origins[:, 2]
+    return root_height < minimum_height
+
+
+def _event_reward_signal(env: "ManagerBasedRLEnv", event: torch.Tensor) -> torch.Tensor:
+    """Return an event indicator scaled so RewardManager applies the configured weight once."""
+    return event.float() / env.step_dt
+
+
+def root_height_below_minimum_event(
+    env: "ManagerBasedRLEnv",
+    minimum_height: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward signal for a full-fall event, corrected for RewardManager dt scaling."""
+    return _event_reward_signal(env, root_height_below_minimum(env, minimum_height, asset_cfg=asset_cfg))
+
+
+def collapse_ground_contact_event(
+    env: "ManagerBasedRLEnv",
+    left_leg_sensor_cfg: SceneEntityCfg,
+    right_leg_sensor_cfg: SceneEntityCfg,
+    left_arm_sensor_cfg: SceneEntityCfg,
+    right_arm_sensor_cfg: SceneEntityCfg,
+    contact_threshold: float = 1.0,
+    min_contacting_limbs: int = 3,
+) -> torch.Tensor:
+    """Reward signal for a multi-limb ground-contact collapse event."""
+    return _event_reward_signal(
+        env,
+        collapse_ground_contact(
+            env,
+            left_leg_sensor_cfg=left_leg_sensor_cfg,
+            right_leg_sensor_cfg=right_leg_sensor_cfg,
+            left_arm_sensor_cfg=left_arm_sensor_cfg,
+            right_arm_sensor_cfg=right_arm_sensor_cfg,
+            contact_threshold=contact_threshold,
+            min_contacting_limbs=min_contacting_limbs,
+        ),
+    )
+
+
+def all_limbs_ground_contact_event(
+    env: "ManagerBasedRLEnv",
+    left_leg_sensor_cfg: SceneEntityCfg,
+    right_leg_sensor_cfg: SceneEntityCfg,
+    left_arm_sensor_cfg: SceneEntityCfg,
+    right_arm_sensor_cfg: SceneEntityCfg,
+    contact_threshold: float = 1.0,
+) -> torch.Tensor:
+    """Backward-compatible four-limb collapse reward signal."""
+    return collapse_ground_contact_event(
+        env,
+        left_leg_sensor_cfg=left_leg_sensor_cfg,
+        right_leg_sensor_cfg=right_leg_sensor_cfg,
+        left_arm_sensor_cfg=left_arm_sensor_cfg,
+        right_arm_sensor_cfg=right_arm_sensor_cfg,
+        contact_threshold=contact_threshold,
+        min_contacting_limbs=4,
+    )
 
 
 def joint_pos_soft_limits_l2(
@@ -117,7 +247,9 @@ def joint_pos_hard_limits_l1(
 
 
 def joint_pos_out_of_limit(
-    env: "ManagerBasedRLEnv", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    tolerance: float = 0.0,
 ) -> torch.Tensor:
     """Terminate when joint positions exceed the hard USD joint limits."""
     asset = env.scene[asset_cfg.name]
@@ -125,8 +257,9 @@ def joint_pos_out_of_limit(
         asset_cfg.joint_ids = slice(None)
 
     limits = asset.data.joint_pos_limits[:, asset_cfg.joint_ids]
-    out_of_upper_limits = torch.any(asset.data.joint_pos[:, asset_cfg.joint_ids] > limits[..., 1], dim=1)
-    out_of_lower_limits = torch.any(asset.data.joint_pos[:, asset_cfg.joint_ids] < limits[..., 0], dim=1)
+    joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    out_of_upper_limits = torch.any(joint_pos > limits[..., 1] + tolerance, dim=1)
+    out_of_lower_limits = torch.any(joint_pos < limits[..., 0] - tolerance, dim=1)
     return torch.logical_or(out_of_upper_limits, out_of_lower_limits)
 
 
@@ -144,13 +277,24 @@ def joint_vel_out_of_limit(
 
 
 def joint_limit_violation(
-    env: "ManagerBasedRLEnv", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    tolerance: float = 0.0,
 ) -> torch.Tensor:
     """Return true when position or velocity exceeds a hard USD joint limit."""
     return torch.logical_or(
-        joint_pos_out_of_limit(env, asset_cfg=asset_cfg),
+        joint_pos_out_of_limit(env, asset_cfg=asset_cfg, tolerance=tolerance),
         joint_vel_out_of_limit(env, asset_cfg=asset_cfg),
     )
+
+
+def joint_limit_violation_event(
+    env: "ManagerBasedRLEnv",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    tolerance: float = 0.0,
+) -> torch.Tensor:
+    """Reward signal for a hard joint-limit event, corrected for RewardManager dt scaling."""
+    return _event_reward_signal(env, joint_limit_violation(env, asset_cfg=asset_cfg, tolerance=tolerance))
 
 
 def joint_deviation_symmetry_l1(
