@@ -129,9 +129,9 @@ terrain system and Phase 1 standing PPO workflow.
 | T4 | Stairs | step_height 0.05-0.15m, width 0.3m |
 | T5 | Irregular wave | amplitude 0.02-0.08m |
 
-### Phase 1 Standing PPO — Reward Design (23 Terms)
+### Phase 1 Standing PPO — Reward Design (24 Terms)
 
-The standing policy uses 23 reward terms organized into 8 categories:
+The standing policy uses 24 reward terms organized into 8 categories:
 
 **Base Stability (5 terms):**
 | Reward | Weight | Purpose |
@@ -166,13 +166,14 @@ The standing policy uses 23 reward terms organized into 8 categories:
 
 Contact sensors cover: ankle_roll_link, knee_link, elbow_link, wrist_yaw_link, rubber_hand.
 
-**Arm & Posture (5 terms):**
+**Arm & Posture (6 terms):**
 | Reward | Weight | Purpose |
 |--------|--------|---------|
-| `arm_swing_l2` | -2.0 | Penalize arm swing energy (keep arms still) |
+| `arm_swing_l2` | -3.0 | Penalize arm swing energy (keep arms still) |
 | `arm_swing_asymmetry_l2` | -4.0 | Penalize left/right arm imbalance |
 | `joint_deviation_waist` | -0.2 | Waist joints deviation from default pose |
-| `joint_deviation_arms` | -0.15 | Arm joints deviation from default pose |
+| `joint_deviation_shoulders` | -2.0 | Shoulder pitch/roll/yaw deviation from default pose |
+| `joint_deviation_arms` | -1.0 | Arm joints deviation from default pose |
 | `joint_symmetry_arms` | -0.2 | Left/right arm symmetry (7 joints per side) |
 
 **Action (1 term):**
@@ -188,7 +189,7 @@ Contact sensors cover: ankle_roll_link, knee_link, elbow_link, wrist_yaw_link, r
 
 Design principles:
 - Hip/knee/ankle joints are **not** posture-constrained — the policy can adapt across terrain
-- Waist and arms are constrained to natural standing pose
+- Waist, shoulders, and arms are constrained to natural standing pose
 - Contact sensor rewards (feet_slide, presence, balance) enforce stable ground contact
 - Joint safety uses a layered approach: soft limits (60%) → hard limits → termination
 - Action targets are clamped to USD joint limits via `ClampedJointPositionAction` (soft limits, 0.005 margin)

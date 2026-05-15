@@ -36,8 +36,10 @@ failures:
 - Foot contact quality: ankle contact sensors penalize stronger foot sliding
   `-0.5`, missing foot contacts, and left/right contact-force imbalance.
 - Natural posture: waist and arm joints are encouraged to stay near the default
-  standing pose, with left/right arm symmetry. Hip, knee, and ankle joints are
-  intentionally not posture-constrained so the policy can adapt across terrain.
+  standing pose, with stronger arm posture `-1.0`, dedicated shoulder
+  pitch/roll/yaw posture `-2.0`, and left/right arm symmetry. Hip, knee, and
+  ankle joints are intentionally not posture-constrained so the policy can adapt
+  across terrain.
 - Reset conditions: 60-second timeout, full-fall root height below `0.45m`
   relative to the terrain/env origin height, hard USD joint-position limit
   violation, or hard USD joint-velocity limit violation. Joint-position resets
@@ -49,8 +51,8 @@ failures:
   `default_joint_pos + action * 0.10`, then the final joint-position target is
   clamped into USD soft joint limits with a `0.005rad` margin before being sent
   to the actuator.
-- Arm stillness: arm swing covers shoulder pitch/roll/yaw, elbow, and wrist
-  joints, plus left/right arm swing asymmetry penalties.
+- Arm stillness: arm swing `-3.0` covers shoulder pitch/roll/yaw, elbow, and
+  wrist joints, plus left/right arm swing asymmetry penalties.
 - Failure avoidance: `termination_penalty = -200.0` uses the same full-fall
   root-height definition as reset. This event reward counteracts IsaacLab
   RewardManager `dt` scaling, so a fall step receives the configured `-200.0`.

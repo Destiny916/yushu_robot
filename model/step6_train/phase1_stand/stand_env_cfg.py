@@ -53,6 +53,11 @@ COLLAPSE_GROUND_CONTACT_THRESHOLD = 1.0
 COLLAPSE_GROUND_CONTACT_MIN_LIMBS = 3
 COLLAPSE_GROUND_CONTACT_PENALTY_WEIGHT = -500.0
 NATURAL_POSTURE_WAIST_JOINTS = ("waist_.*_joint",)
+SHOULDER_POSTURE_JOINTS = (
+    ".*_shoulder_pitch_joint",
+    ".*_shoulder_roll_joint",
+    ".*_shoulder_yaw_joint",
+)
 NATURAL_POSTURE_ARM_JOINTS = (
     ".*_shoulder_pitch_joint",
     ".*_shoulder_roll_joint",
@@ -79,8 +84,10 @@ RIGHT_ARM_SYMMETRY_JOINTS = (
     "right_wrist_yaw_joint",
 )
 JOINT_DEVIATION_WAIST_WEIGHT = -0.2
-JOINT_DEVIATION_ARMS_WEIGHT = -0.15
+JOINT_DEVIATION_ARMS_WEIGHT = -1.0
+JOINT_DEVIATION_SHOULDERS_WEIGHT = -2.0
 JOINT_SYMMETRY_ARMS_WEIGHT = -0.2
+ARM_SWING_L2_WEIGHT = -3.0
 ANG_VEL_XY_WEIGHT = -1.5
 JOINT_VEL_L2_WEIGHT = -5.0e-3
 ACTION_RATE_L2_WEIGHT = -0.05
@@ -116,6 +123,7 @@ REWARD_TERMS = (
     "joint_acc_l2",
     "action_rate_l2",
     "joint_deviation_waist",
+    "joint_deviation_shoulders",
     "joint_deviation_arms",
     "joint_symmetry_arms",
     "termination_penalty",
@@ -361,7 +369,7 @@ def create_g1_stand_no_external_force_env_cfg(
         )
         arm_swing_l2 = RewTerm(
             func=arm_swing_l2_fn,
-            weight=-2.0,
+            weight=ARM_SWING_L2_WEIGHT,
             params={
                 "left_asset_cfg": make_left_arm_swing_cfg_fn(),
                 "right_asset_cfg": make_right_arm_swing_cfg_fn(),
@@ -381,6 +389,11 @@ def create_g1_stand_no_external_force_env_cfg(
             func=mdp.joint_deviation_l1,
             weight=JOINT_DEVIATION_WAIST_WEIGHT,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(NATURAL_POSTURE_WAIST_JOINTS))},
+        )
+        joint_deviation_shoulders = RewTerm(
+            func=mdp.joint_deviation_l1,
+            weight=JOINT_DEVIATION_SHOULDERS_WEIGHT,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(SHOULDER_POSTURE_JOINTS))},
         )
         joint_deviation_arms = RewTerm(
             func=mdp.joint_deviation_l1,

@@ -17,7 +17,7 @@ Keep source robot assets in `../yushu_robot_urdf/`. Keep generated USD assets in
 | `step3_robot_cfg/` | `step3_robot_cfg/README.md` | Reusable local `G1_LOCAL_CFG` asset config. |
 | `step4_manager_env/` | `step4_manager_env/README.md` | Minimal manager-based standing environment. |
 | `step5_sensors/` | `step5_sensors/README.md` | Contact sensor environment extension. |
-| `step6_train/` | `step6_train/README.md` | Terrain system (T0-T5), Phase 1 standing PPO with 23 reward terms, collapse detection, action clamping, contact sensors, and policy playback. |
+| `step6_train/` | `step6_train/README.md` | Terrain system (T0-T5), Phase 1 standing PPO with 24 reward terms, collapse detection, action clamping, contact sensors, and policy playback. |
 
 ## Common Commands
 

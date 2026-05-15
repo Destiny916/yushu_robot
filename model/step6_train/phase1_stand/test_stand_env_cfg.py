@@ -99,6 +99,7 @@ class StandEnvCfgTests(unittest.TestCase):
                 "joint_acc_l2",
                 "action_rate_l2",
                 "joint_deviation_waist",
+                "joint_deviation_shoulders",
                 "joint_deviation_arms",
                 "joint_symmetry_arms",
                 "termination_penalty",
@@ -202,9 +203,19 @@ class StandEnvCfgTests(unittest.TestCase):
         stand_env_cfg = self.load_module()
 
         self.assertEqual(-0.2, stand_env_cfg.JOINT_DEVIATION_WAIST_WEIGHT)
-        self.assertEqual(-0.15, stand_env_cfg.JOINT_DEVIATION_ARMS_WEIGHT)
+        self.assertEqual(-1.0, stand_env_cfg.JOINT_DEVIATION_ARMS_WEIGHT)
+        self.assertEqual(-2.0, stand_env_cfg.JOINT_DEVIATION_SHOULDERS_WEIGHT)
+        self.assertEqual(-3.0, stand_env_cfg.ARM_SWING_L2_WEIGHT)
         self.assertEqual(-0.2, stand_env_cfg.JOINT_SYMMETRY_ARMS_WEIGHT)
         self.assertEqual(("waist_.*_joint",), stand_env_cfg.NATURAL_POSTURE_WAIST_JOINTS)
+        self.assertEqual(
+            (
+                ".*_shoulder_pitch_joint",
+                ".*_shoulder_roll_joint",
+                ".*_shoulder_yaw_joint",
+            ),
+            stand_env_cfg.SHOULDER_POSTURE_JOINTS,
+        )
         self.assertEqual(
             (
                 ".*_shoulder_pitch_joint",
@@ -218,6 +229,7 @@ class StandEnvCfgTests(unittest.TestCase):
 
         configured_joint_patterns = (
             *stand_env_cfg.NATURAL_POSTURE_WAIST_JOINTS,
+            *stand_env_cfg.SHOULDER_POSTURE_JOINTS,
             *stand_env_cfg.NATURAL_POSTURE_ARM_JOINTS,
         )
         for excluded_pattern in ("hip", "knee", "ankle"):
@@ -225,9 +237,12 @@ class StandEnvCfgTests(unittest.TestCase):
 
         source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
         self.assertIn("joint_deviation_waist", source)
+        self.assertIn("joint_deviation_shoulders", source)
         self.assertIn("joint_deviation_arms", source)
         self.assertIn("joint_symmetry_arms", source)
         self.assertIn("joint_deviation_symmetry_l1_fn", source)
+        self.assertIn("weight=JOINT_DEVIATION_SHOULDERS_WEIGHT", source)
+        self.assertIn("weight=ARM_SWING_L2_WEIGHT", source)
 
 
 if __name__ == "__main__":
