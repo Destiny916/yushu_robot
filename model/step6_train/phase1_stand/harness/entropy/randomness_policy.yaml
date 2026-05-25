@@ -1,0 +1,15 @@
+randomness_policy:
+  default_seed: 42
+  rule: Change one entropy source at a time when debugging training behavior.
+  controlled_sources:
+    - PPO seed
+    - terrain selection
+    - terrain curriculum level
+    - resume checkpoint
+    - run name
+    - number of environments
+  uncontrolled_sources_to_watch:
+    - simulator nondeterminism
+    - GPU scheduling
+    - asynchronous rendering
+    - contact solver edge cases

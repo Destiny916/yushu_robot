@@ -71,6 +71,53 @@ class StandRewardTests(unittest.TestCase):
             stand_rewards.RIGHT_ARM_SWING_JOINT_NAMES,
         )
 
+    def test_standing_time_reward_keeps_first_30_seconds_at_base_rate_then_increases(self):
+        stand_rewards = self.load_module()
+
+        class FakeTerminationManager:
+            def __init__(self):
+                self.terminated = torch.tensor([False, False, False, False, False, True])
+
+        class FakeEnv:
+            def __init__(self):
+                self.step_dt = 0.02
+                self.episode_length_buf = torch.tensor([0, 750, 1500, 2250, 3000, 3000])
+                self.termination_manager = FakeTerminationManager()
+
+        reward = stand_rewards.standing_time_reward(
+            FakeEnv(),
+            ramp_start_s=30.0,
+            ramp_end_s=60.0,
+            max_multiplier=2.0,
+        )
+
+        expected = torch.tensor([1.0, 1.0, 1.0, 1.5, 2.0, 0.0])
+        torch.testing.assert_close(reward, expected)
+
+    def test_standing_time_reward_keeps_zero_to_30_second_total_at_150_with_weight_5(self):
+        stand_rewards = self.load_module()
+
+        class FakeTerminationManager:
+            def __init__(self, num_steps: int):
+                self.terminated = torch.zeros(num_steps, dtype=torch.bool)
+
+        class FakeEnv:
+            def __init__(self, num_steps: int):
+                self.step_dt = 0.02
+                self.episode_length_buf = torch.arange(num_steps)
+                self.termination_manager = FakeTerminationManager(num_steps)
+
+        num_steps_30s = 1500
+        reward_signal = stand_rewards.standing_time_reward(
+            FakeEnv(num_steps_30s),
+            ramp_start_s=30.0,
+            ramp_end_s=60.0,
+            max_multiplier=2.0,
+        )
+
+        total_reward = torch.sum(reward_signal * 5.0 * 0.02)
+        self.assertAlmostEqual(150.0, total_reward.item(), places=5)
+
     def test_joint_pos_soft_limits_use_usd_joint_limits_not_default_pose(self):
         stand_rewards = self.load_module()
 
@@ -618,6 +665,80 @@ class StandRewardTests(unittest.TestCase):
         penalty = stand_rewards.joint_deviation_symmetry_l1(FakeEnv(), left_cfg, right_cfg)
 
         self.assertAlmostEqual(0.1, penalty.item(), places=6)
+
+    def test_joint_deviation_l2_increases_with_joint_angle_difference(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.joint_pos = torch.tensor([[0.1, 0.3, -0.4], [0.2, 0.6, -0.8]], dtype=torch.float32)
+                self.default_joint_pos = torch.zeros_like(self.joint_pos)
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+
+        cfg = FakeSceneEntityCfg("robot")
+        cfg.joint_ids = [0, 1, 2]
+
+        penalty = stand_rewards.joint_deviation_l2(FakeEnv(), asset_cfg=cfg)
+
+        torch.testing.assert_close(penalty, torch.tensor([0.26, 1.04]))
+        self.assertGreater(penalty[1].item(), penalty[0].item())
+
+    def test_arm_vertical_alignment_l2_penalizes_non_vertical_arms(self):
+        stand_rewards = self.load_module()
+
+        class FakeAssetData:
+            def __init__(self):
+                self.body_pos_w = torch.tensor(
+                    [
+                        [
+                            [0.0, 0.0, 1.0],
+                            [0.0, 0.0, 0.0],
+                            [0.0, 0.0, 1.0],
+                            [0.0, 0.0, 0.0],
+                        ],
+                        [
+                            [0.0, 0.0, 1.0],
+                            [1.0, 0.0, 1.0],
+                            [0.0, 0.0, 1.0],
+                            [0.0, 1.0, 1.0],
+                        ],
+                    ],
+                    dtype=torch.float32,
+                )
+
+        class FakeAsset:
+            def __init__(self):
+                self.data = FakeAssetData()
+
+        class FakeEnv:
+            def __init__(self):
+                self.scene = {"robot": FakeAsset()}
+
+        left_shoulder_cfg = FakeSceneEntityCfg("robot")
+        left_shoulder_cfg.body_ids = [0]
+        left_hand_cfg = FakeSceneEntityCfg("robot")
+        left_hand_cfg.body_ids = [1]
+        right_shoulder_cfg = FakeSceneEntityCfg("robot")
+        right_shoulder_cfg.body_ids = [2]
+        right_hand_cfg = FakeSceneEntityCfg("robot")
+        right_hand_cfg.body_ids = [3]
+
+        penalty = stand_rewards.arm_vertical_alignment_l2(
+            FakeEnv(),
+            left_shoulder_body_cfg=left_shoulder_cfg,
+            left_hand_body_cfg=left_hand_cfg,
+            right_shoulder_body_cfg=right_shoulder_cfg,
+            right_hand_body_cfg=right_hand_cfg,
+        )
+
+        torch.testing.assert_close(penalty, torch.tensor([0.0, 4.0]))
 
 
 if __name__ == "__main__":

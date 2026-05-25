@@ -76,6 +76,10 @@ class StandEnvCfgTests(unittest.TestCase):
 
         self.assertEqual(60.0, stand_env_cfg.EPISODE_LENGTH_S)
         self.assertEqual(5.0, stand_env_cfg.ALIVE_REWARD_WEIGHT)
+        self.assertEqual(30.0, stand_env_cfg.STANDING_TIME_REWARD_RAMP_START_S)
+        self.assertEqual(60.0, stand_env_cfg.STANDING_TIME_REWARD_RAMP_END_S)
+        self.assertEqual(2.0, stand_env_cfg.STANDING_TIME_REWARD_MAX_MULTIPLIER)
+        self.assertEqual(150.0, stand_env_cfg.ALIVE_REWARD_WEIGHT * stand_env_cfg.STANDING_TIME_REWARD_RAMP_START_S)
         self.assertEqual(-1.5, stand_env_cfg.ANG_VEL_XY_WEIGHT)
         self.assertEqual(-5.0e-3, stand_env_cfg.JOINT_VEL_L2_WEIGHT)
         self.assertEqual(-0.05, stand_env_cfg.ACTION_RATE_L2_WEIGHT)
@@ -100,8 +104,12 @@ class StandEnvCfgTests(unittest.TestCase):
                 "action_rate_l2",
                 "joint_deviation_waist",
                 "joint_deviation_shoulders",
-                "joint_deviation_arms",
                 "joint_symmetry_arms",
+                "waist_torso_alignment_l2",
+                "hip_deviation_l2",
+                "elbow_straightness_l2",
+                "hand_joint_deviation_l2",
+                "arm_vertical_alignment_l2",
                 "termination_penalty",
                 "joint_limit_violation_penalty",
                 "collapse_ground_contact_penalty",
@@ -146,7 +154,13 @@ class StandEnvCfgTests(unittest.TestCase):
         self.assertEqual(-500.0, stand_env_cfg.COLLAPSE_GROUND_CONTACT_PENALTY_WEIGHT)
 
         source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
-        self.assertIn("is_alive = RewTerm(func=mdp.is_alive, weight=ALIVE_REWARD_WEIGHT)", source)
+        self.assertIn("standing_time_reward_fn", source)
+        self.assertIn("is_alive = RewTerm(", source)
+        self.assertIn("func=standing_time_reward_fn", source)
+        self.assertIn("weight=ALIVE_REWARD_WEIGHT", source)
+        self.assertIn('"ramp_start_s": STANDING_TIME_REWARD_RAMP_START_S', source)
+        self.assertIn('"ramp_end_s": STANDING_TIME_REWARD_RAMP_END_S', source)
+        self.assertIn('"max_multiplier": STANDING_TIME_REWARD_MAX_MULTIPLIER', source)
         self.assertIn("ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=ANG_VEL_XY_WEIGHT)", source)
         self.assertIn("joint_vel_l2 = RewTerm(func=mdp.joint_vel_l2, weight=JOINT_VEL_L2_WEIGHT)", source)
         self.assertIn("action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=ACTION_RATE_L2_WEIGHT)", source)
@@ -179,7 +193,7 @@ class StandEnvCfgTests(unittest.TestCase):
         self.assertEqual(6, stand_env_cfg.CONTACT_SENSOR_HISTORY_LENGTH)
         self.assertEqual(-0.5, stand_env_cfg.FEET_SLIDE_WEIGHT)
         self.assertEqual(-1.0, stand_env_cfg.FEET_CONTACT_PRESENCE_WEIGHT)
-        self.assertEqual(-0.5, stand_env_cfg.FEET_CONTACT_BALANCE_WEIGHT)
+        self.assertEqual(-0.15, stand_env_cfg.FEET_CONTACT_BALANCE_WEIGHT)
         self.assertEqual(("left_ankle_roll_link", "left_knee_link"), stand_env_cfg.COLLAPSE_LEFT_LEG_BODY_NAMES)
         self.assertEqual(("right_ankle_roll_link", "right_knee_link"), stand_env_cfg.COLLAPSE_RIGHT_LEG_BODY_NAMES)
         self.assertEqual(
@@ -199,15 +213,36 @@ class StandEnvCfgTests(unittest.TestCase):
         self.assertIn("feet_contact_balance_fn", source)
         self.assertIn("COLLAPSE_LEFT_LEG_BODY_NAMES", source)
 
-    def test_natural_posture_rewards_do_not_constrain_hips_knees_or_ankles(self):
+    def test_posture_rewards_constrain_requested_upper_body_and_hip_joints(self):
         stand_env_cfg = self.load_module()
 
         self.assertEqual(-0.2, stand_env_cfg.JOINT_DEVIATION_WAIST_WEIGHT)
-        self.assertEqual(-1.0, stand_env_cfg.JOINT_DEVIATION_ARMS_WEIGHT)
         self.assertEqual(-2.0, stand_env_cfg.JOINT_DEVIATION_SHOULDERS_WEIGHT)
         self.assertEqual(-3.0, stand_env_cfg.ARM_SWING_L2_WEIGHT)
         self.assertEqual(-0.2, stand_env_cfg.JOINT_SYMMETRY_ARMS_WEIGHT)
+        self.assertEqual(-2.0, stand_env_cfg.WAIST_TORSO_ALIGNMENT_WEIGHT)
+        self.assertEqual(-0.3, stand_env_cfg.HIP_DEVIATION_WEIGHT)
+        self.assertEqual(-2.0, stand_env_cfg.ELBOW_STRAIGHTNESS_WEIGHT)
+        self.assertEqual(-1.0, stand_env_cfg.HAND_JOINT_DEVIATION_WEIGHT)
+        self.assertEqual(-1.0, stand_env_cfg.ARM_VERTICAL_ALIGNMENT_WEIGHT)
         self.assertEqual(("waist_.*_joint",), stand_env_cfg.NATURAL_POSTURE_WAIST_JOINTS)
+        self.assertEqual(
+            ("waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"),
+            stand_env_cfg.WAIST_TORSO_ALIGNMENT_JOINTS,
+        )
+        self.assertEqual(
+            (".*_hip_yaw_joint", ".*_hip_roll_joint", ".*_hip_pitch_joint"),
+            stand_env_cfg.HIP_POSTURE_JOINTS,
+        )
+        self.assertEqual((".*_elbow_joint",), stand_env_cfg.ELBOW_STRAIGHTNESS_JOINTS)
+        self.assertEqual(
+            (".*_wrist_roll_joint", ".*_wrist_pitch_joint", ".*_wrist_yaw_joint"),
+            stand_env_cfg.HAND_POSTURE_JOINTS,
+        )
+        self.assertEqual(("left_shoulder_pitch_link",), stand_env_cfg.LEFT_ARM_VERTICAL_SHOULDER_BODY_NAMES)
+        self.assertEqual(("left_rubber_hand",), stand_env_cfg.LEFT_ARM_VERTICAL_HAND_BODY_NAMES)
+        self.assertEqual(("right_shoulder_pitch_link",), stand_env_cfg.RIGHT_ARM_VERTICAL_SHOULDER_BODY_NAMES)
+        self.assertEqual(("right_rubber_hand",), stand_env_cfg.RIGHT_ARM_VERTICAL_HAND_BODY_NAMES)
         self.assertEqual(
             (
                 ".*_shoulder_pitch_joint",
@@ -216,33 +251,35 @@ class StandEnvCfgTests(unittest.TestCase):
             ),
             stand_env_cfg.SHOULDER_POSTURE_JOINTS,
         )
-        self.assertEqual(
-            (
-                ".*_shoulder_pitch_joint",
-                ".*_shoulder_roll_joint",
-                ".*_shoulder_yaw_joint",
-                ".*_elbow_joint",
-                ".*_wrist_.*_joint",
-            ),
-            stand_env_cfg.NATURAL_POSTURE_ARM_JOINTS,
-        )
+        self.assertFalse(hasattr(stand_env_cfg, "NATURAL_POSTURE_ARM_JOINTS"))
 
         configured_joint_patterns = (
             *stand_env_cfg.NATURAL_POSTURE_WAIST_JOINTS,
             *stand_env_cfg.SHOULDER_POSTURE_JOINTS,
-            *stand_env_cfg.NATURAL_POSTURE_ARM_JOINTS,
+            *stand_env_cfg.WAIST_TORSO_ALIGNMENT_JOINTS,
+            *stand_env_cfg.HIP_POSTURE_JOINTS,
+            *stand_env_cfg.ELBOW_STRAIGHTNESS_JOINTS,
+            *stand_env_cfg.HAND_POSTURE_JOINTS,
         )
-        for excluded_pattern in ("hip", "knee", "ankle"):
+        self.assertTrue(any("hip" in pattern for pattern in configured_joint_patterns))
+        for excluded_pattern in ("knee", "ankle"):
             self.assertFalse(any(excluded_pattern in pattern for pattern in configured_joint_patterns))
 
         source = Path(stand_env_cfg.__file__).read_text(encoding="utf-8")
         self.assertIn("joint_deviation_waist", source)
         self.assertIn("joint_deviation_shoulders", source)
-        self.assertIn("joint_deviation_arms", source)
+        self.assertNotIn("joint_deviation_arms = RewTerm", source)
         self.assertIn("joint_symmetry_arms", source)
         self.assertIn("joint_deviation_symmetry_l1_fn", source)
+        self.assertIn("joint_deviation_l2_fn", source)
+        self.assertIn("arm_vertical_alignment_l2_fn", source)
         self.assertIn("weight=JOINT_DEVIATION_SHOULDERS_WEIGHT", source)
         self.assertIn("weight=ARM_SWING_L2_WEIGHT", source)
+        self.assertIn("weight=WAIST_TORSO_ALIGNMENT_WEIGHT", source)
+        self.assertIn("weight=HIP_DEVIATION_WEIGHT", source)
+        self.assertIn("weight=ELBOW_STRAIGHTNESS_WEIGHT", source)
+        self.assertIn("weight=HAND_JOINT_DEVIATION_WEIGHT", source)
+        self.assertIn("weight=ARM_VERTICAL_ALIGNMENT_WEIGHT", source)
 
 
 if __name__ == "__main__":

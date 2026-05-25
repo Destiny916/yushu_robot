@@ -1,0 +1,26 @@
+feedback_loop:
+  iteration_steps:
+    - record_run_command
+    - run_harness_contract_check
+    - run_focused_unit_tests
+    - run_short_playback_or_smoke_when_available
+    - classify_failure
+    - search_project_and_reference_examples
+    - propose_minimal_change
+    - record_next_action
+  failure_classes:
+    - reset_too_early
+    - reset_too_late
+    - joint_limit_violation
+    - shoulder_or_arm_motion
+    - foot_sliding
+    - collapse_contact
+    - training_instability
+    - checkpoint_or_resume_error
+  required_artifacts:
+    - run command
+    - run name
+    - terrain key
+    - checkpoint lineage
+    - observed symptom
+    - changed files

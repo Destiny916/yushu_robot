@@ -1,0 +1,23 @@
+entropy_budget:
+  fixed_by_default:
+    seed: 42
+    action_scale: ACTION_SCALE
+    action_target_limit_margin: ACTION_TARGET_LIMIT_MARGIN
+    terrain_key_for_debug: T0
+  allowed_to_vary_per_experiment:
+    - terrain
+    - num_envs
+    - max_iterations
+    - checkpoint
+    - run_name
+    - reward weights under explicit review
+  record_every_run:
+    - seed
+    - terrain
+    - num_envs
+    - run_name
+    - resume
+    - load_run
+    - checkpoint
+    - git branch
+    - git status summary

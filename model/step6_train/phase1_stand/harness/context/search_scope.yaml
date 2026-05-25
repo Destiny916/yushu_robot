@@ -1,0 +1,24 @@
+purpose: >
+  Search these roots when a phase1_stand issue needs broader context. The
+  yushu_robot project is editable; IsaacLab scripts and source roots are
+  read-only references unless the user explicitly requests upstream changes.
+
+editable_roots:
+  - D:/il/IsaacLab/scripts/yushu_robot
+  - D:/il/IsaacLab/scripts/yushu_robot/model/step6_train/phase1_stand
+
+reference_roots:
+  - D:/il/IsaacLab/scripts/demos
+  - D:/il/IsaacLab/scripts/tutorials
+  - D:/il/IsaacLab/scripts/reinforcement_learning
+  - D:/il/IsaacLab/scripts/environments
+  - D:/il/IsaacLab/source
+
+excluded_patterns:
+  - .git
+  - __pycache__
+  - logs
+  - "*.pt"
+  - "*.usd"
+  - "*.png"
+  - "*.mp4"

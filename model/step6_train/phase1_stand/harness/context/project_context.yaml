@@ -1,0 +1,29 @@
+project:
+  name: yushu_robot
+  root: D:/il/IsaacLab/scripts/yushu_robot
+  isaaclab_scripts_root: D:/il/IsaacLab/scripts
+  isaaclab_source_root: D:/il/IsaacLab/source
+  python: D:/il/env/Scripts/python.exe
+
+primary_phase:
+  name: phase1_stand
+  path: model/step6_train/phase1_stand
+  purpose: Train and play back the Unitree G1 standing policy on T0-T5 terrain.
+
+owned_project_paths:
+  - yushu_robot_urdf
+  - model
+  - model/step3_robot_cfg
+  - model/step6_train
+  - model/step6_train/phase1_stand
+  - model/step6_train/terrains
+
+generated_paths:
+  - logs/rsl_rl/g1_stand
+  - model/generatedUSD
+
+do_not_commit_patterns:
+  - "*.pt"
+  - logs/
+  - __pycache__/
+  - .gitnexus/

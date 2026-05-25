@@ -27,19 +27,24 @@ local Unitree G1 robot.
 The standing policy is shaped to remain still and avoid early joint-limit
 failures:
 
-- Base stability: alive reward `+5.0`, flat orientation, height, horizontal velocity,
-  and stronger angular velocity penalty `-1.5`.
+- Base stability: standing-time reward starts at `+5.0` per second, keeps the
+  first 30 seconds at a cumulative `+150.0`, then ramps to `2x` by 60 seconds;
+  flat orientation, height, horizontal velocity, and stronger angular velocity
+  penalty `-1.5`.
 - Smoothness: stronger joint velocity `-5.0e-3`, joint acceleration, and
   action-rate `-0.05` penalties.
 - Joint safety: USD joint-position limit proximity, hard USD joint-position
   excess, and USD joint-velocity limit threshold at 30%.
 - Foot contact quality: ankle contact sensors penalize stronger foot sliding
-  `-0.5`, missing foot contacts, and left/right contact-force imbalance.
-- Natural posture: waist and arm joints are encouraged to stay near the default
-  standing pose, with stronger arm posture `-1.0`, dedicated shoulder
-  pitch/roll/yaw posture `-2.0`, and left/right arm symmetry. Hip, knee, and
-  ankle joints are intentionally not posture-constrained so the policy can adapt
-  across terrain.
+  `-0.5`, missing foot contacts, and a lighter left/right contact-force
+  imbalance penalty `-0.15` for uneven terrain tolerance.
+- Natural posture: waist and shoulder joints are encouraged to stay near the
+  default standing pose, with dedicated shoulder pitch/roll/yaw posture `-2.0`,
+  waist/torso alignment `-2.0`, mild hip deviation `-0.3`, elbow straightness
+  `-2.0`, wrist/hand joint deviation `-1.0`, and left/right arm symmetry. The
+  broad whole-arm default-pose penalty is intentionally removed to avoid
+  over-constraining arm posture. Knee and ankle joints are intentionally not
+  posture-constrained so the policy can adapt across terrain.
 - Reset conditions: 60-second timeout, full-fall root height below `0.45m`
   relative to the terrain/env origin height, hard USD joint-position limit
   violation, or hard USD joint-velocity limit violation. Joint-position resets
@@ -52,7 +57,9 @@ failures:
   clamped into USD soft joint limits with a `0.005rad` margin before being sent
   to the actuator.
 - Arm stillness: arm swing `-3.0` covers shoulder pitch/roll/yaw, elbow, and
-  wrist joints, plus left/right arm swing asymmetry penalties.
+  wrist joints, plus left/right arm swing asymmetry penalties and an arm
+  vertical-alignment penalty `-1.0` that encourages straight arms to hang along
+  the world vertical axis.
 - Failure avoidance: `termination_penalty = -200.0` uses the same full-fall
   root-height definition as reset. This event reward counteracts IsaacLab
   RewardManager `dt` scaling, so a fall step receives the configured `-200.0`.
@@ -127,6 +134,20 @@ If a policy failure/reset is detected during validation, playback prints:
 
 ```text
 error
+```
+
+## Harness
+
+The local harness under `harness/` records the context, contracts, feedback loop,
+and entropy controls for this standing phase while still allowing read-only
+reference searches across the wider `yushu_robot` project and IsaacLab example
+folders.
+
+```powershell
+D:\il\env\Scripts\python.exe -B model\step6_train\phase1_stand\harness\scripts\check_harness_contracts.py
+D:\il\env\Scripts\python.exe -B model\step6_train\phase1_stand\harness\scripts\collect_context.py
+D:\il\env\Scripts\python.exe -B model\step6_train\phase1_stand\harness\scripts\search_reference_examples.py TerrainImporterCfg --max-results 5
+D:\il\env\Scripts\python.exe -B model\step6_train\phase1_stand\harness\scripts\summarize_run.py --run-dir logs\rsl_rl\g1_stand\<run_name>
 ```
 
 ## Tests

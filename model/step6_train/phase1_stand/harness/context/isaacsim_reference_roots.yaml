@@ -1,0 +1,13 @@
+isaacsim_reference_roots:
+  scripts_root: D:/il/IsaacLab/scripts
+  useful_examples:
+    reinforcement_learning: D:/il/IsaacLab/scripts/reinforcement_learning
+    tutorials_envs: D:/il/IsaacLab/scripts/tutorials/03_envs
+    tutorials_sensors: D:/il/IsaacLab/scripts/tutorials/04_sensors
+    demos: D:/il/IsaacLab/scripts/demos
+  source_reference:
+    isaaclab: D:/il/IsaacLab/source/isaaclab
+    isaaclab_tasks: D:/il/IsaacLab/source/isaaclab_tasks
+  policy:
+    editable: false
+    use_for: API examples, manager patterns, terrain examples, sensor examples, RSL-RL runners.

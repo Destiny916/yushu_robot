@@ -1,0 +1,30 @@
+architecture_constraints:
+  primary_owner: model/step6_train/phase1_stand
+  editable_project_roots:
+    - model/step6_train/phase1_stand
+    - model/step6_train/terrains
+    - model/step3_robot_cfg
+    - yushu_robot_urdf
+  read_only_reference_roots:
+    - D:/il/IsaacLab/scripts/demos
+    - D:/il/IsaacLab/scripts/tutorials
+    - D:/il/IsaacLab/scripts/reinforcement_learning
+    - D:/il/IsaacLab/source
+  forbidden_without_explicit_user_request:
+    - IsaacLab source modifications
+    - mesh renames
+    - checkpoint commits
+    - deleting user or generated files
+  style:
+    - Prefer existing IsaacLab manager-based environment patterns.
+    - Keep harness scripts pure Python stdlib.
+    - Keep training commands PowerShell-compatible.
+  change_control:
+    - phase1_stand conversation requires harness read.
+    - Every conversation about yushu_robot/model/step6_train/phase1_stand must start by reading harness/README.md, constraints/architecture_constraints.yaml, constraints/reward_contract.yaml, and constraints/termination_contract.yaml before analysis or edits.
+    - phase1_stand change requires harness review.
+    - Any behavior change under model/step6_train/phase1_stand must check whether harness context, constraints, feedback, entropy, scripts, tests, or README entries need updates.
+    - Every phase1_stand conversation that changes behavior, commands, harness rules, contracts, scripts, tests, or run instructions must update the relevant README in the same change.
+    - confirm before writing harness changes.
+    - Before editing harness files, explain the proposed harness file changes, reason, and expected impact, then wait for user confirmation.
+    - user confirmation is required before harness rule, contract, script, or README changes are written.

@@ -48,6 +48,20 @@ def lin_vel_xy_l2(env: "ManagerBasedRLEnv", asset_cfg: SceneEntityCfg = SceneEnt
     return torch.sum(torch.square(asset.data.root_lin_vel_b[:, :2]), dim=1)
 
 
+def standing_time_reward(
+    env: "ManagerBasedRLEnv",
+    ramp_start_s: float = 30.0,
+    ramp_end_s: float = 60.0,
+    max_multiplier: float = 2.0,
+) -> torch.Tensor:
+    """Reward staying alive, increasing after the configured standing duration."""
+    elapsed_s = env.episode_length_buf.float() * env.step_dt
+    ramp_duration_s = max(ramp_end_s - ramp_start_s, 1.0e-6)
+    ramp_progress = torch.clamp((elapsed_s - ramp_start_s) / ramp_duration_s, min=0.0, max=1.0)
+    multiplier = 1.0 + ramp_progress * (max_multiplier - 1.0)
+    return multiplier * (~env.termination_manager.terminated).float()
+
+
 def _contact_force_norm_history(env: "ManagerBasedRLEnv", sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Return max contact force norm over sensor history for the selected bodies."""
     contact_sensor = env.scene.sensors[sensor_cfg.name]
@@ -313,6 +327,52 @@ def joint_deviation_symmetry_l1(
         - asset.data.default_joint_pos[:, right_asset_cfg.joint_ids]
     )
     return torch.sum(torch.abs(left_deviation - right_deviation), dim=1)
+
+
+def joint_deviation_l2(env: "ManagerBasedRLEnv", asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize squared joint deviation from the default pose."""
+    asset = env.scene[asset_cfg.name]
+    if asset_cfg.joint_ids is None:
+        asset_cfg.joint_ids = slice(None)
+
+    joint_pos = asset.data.joint_pos[:, asset_cfg.joint_ids]
+    default_joint_pos = asset.data.default_joint_pos[:, asset_cfg.joint_ids]
+    return torch.sum(torch.square(joint_pos - default_joint_pos), dim=1)
+
+
+def _body_position_w(asset, body_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Return the mean world position for a selected body group."""
+    if body_cfg.body_ids is None:
+        body_cfg.body_ids = slice(None)
+
+    body_pos = asset.data.body_pos_w[:, body_cfg.body_ids, :]
+    if body_pos.ndim == 2:
+        return body_pos
+    return torch.mean(body_pos, dim=1)
+
+
+def arm_vertical_alignment_l2(
+    env: "ManagerBasedRLEnv",
+    left_shoulder_body_cfg: SceneEntityCfg,
+    left_hand_body_cfg: SceneEntityCfg,
+    right_shoulder_body_cfg: SceneEntityCfg,
+    right_hand_body_cfg: SceneEntityCfg,
+    eps: float = 1.0e-6,
+) -> torch.Tensor:
+    """Penalize arm direction away from vertical downward alignment."""
+    asset = env.scene[left_shoulder_body_cfg.name]
+    target_direction = asset.data.body_pos_w.new_tensor((0.0, 0.0, -1.0)).view(1, 3)
+
+    def normalized_direction(root_cfg: SceneEntityCfg, tip_cfg: SceneEntityCfg) -> torch.Tensor:
+        direction = _body_position_w(asset, tip_cfg) - _body_position_w(asset, root_cfg)
+        length = torch.clamp(torch.norm(direction, dim=1, keepdim=True), min=eps)
+        return direction / length
+
+    left_direction = normalized_direction(left_shoulder_body_cfg, left_hand_body_cfg)
+    right_direction = normalized_direction(right_shoulder_body_cfg, right_hand_body_cfg)
+    return torch.sum(torch.square(left_direction - target_direction), dim=1) + torch.sum(
+        torch.square(right_direction - target_direction), dim=1
+    )
 
 
 def joint_vel_usd_limits_l1(

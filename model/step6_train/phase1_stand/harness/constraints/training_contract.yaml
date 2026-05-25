@@ -1,0 +1,21 @@
+training_contract:
+  train_entry: model/step6_train/phase1_stand/train_stand.py
+  play_entry: model/step6_train/phase1_stand/play_stand.py
+  required_cli_args:
+    - --terrain
+    - --num_envs
+    - --max_iterations
+    - --save_interval
+    - --seed
+    - --resume
+    - --load_run
+    - --checkpoint
+    - --run_name
+  required_checkpoint_behavior:
+    - Supports RSL-RL model_*.pt checkpoints.
+    - Copies newest model_*.pt to checkpoint_stand.pt after training.
+    - Play script can resolve checkpoint_stand.pt or model_*.pt.
+  required_safety:
+    - Uses ClampedJointPositionActionCfg.
+    - Keeps ACTION_TARGET_LIMIT_MARGIN.
+    - Keeps ACTION_SCALE explicit.

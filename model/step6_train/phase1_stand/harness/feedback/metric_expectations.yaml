@@ -1,0 +1,18 @@
+metric_expectations:
+  standing:
+    desired:
+      - high episode length before reset
+      - low base xy velocity
+      - low base angular velocity
+      - low action rate
+      - low shoulder joint deviation
+      - low arm swing velocity
+    red_flags:
+      - frequent joint_limit_violation_penalty
+      - frequent collapse_ground_contact_penalty
+      - termination_penalty spikes
+      - high feet_slide
+      - unstable reward after resume
+  smoke_thresholds:
+    max_steps_for_playback_smoke: 500
+    report_interval: 100

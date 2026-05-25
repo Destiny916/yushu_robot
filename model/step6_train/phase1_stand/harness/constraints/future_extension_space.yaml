@@ -1,0 +1,18 @@
+future_extension_space:
+  purpose: Reserve harness extension points for later phases without coupling phase1_stand to unfinished systems.
+  reserved_modules:
+    phase1_walk:
+      role: Walking specialist environment and PPO policy.
+      expected_checkpoint: checkpoint_walk.pt
+    phase2_dagger:
+      role: MoE gating and behavior distillation.
+      expected_checkpoint: checkpoint_moe_dagger.pt
+    phase3_pcgrad:
+      role: Multi-task fine-tuning with gradient conflict handling.
+      expected_checkpoint: checkpoint_moe_final.pt
+    common:
+      role: Shared terrain, policy, metric, and checkpoint helpers.
+  compatibility_rules:
+    - Do not remove phase1_stand checkpoint_stand.pt alias.
+    - Keep terrain keys T0-T5 stable.
+    - Keep reward and termination contracts machine-checkable.

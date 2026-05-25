@@ -1,0 +1,15 @@
+termination_contract:
+  required_termination_terms:
+    - time_out
+    - root_height_below_minimum
+    - joint_pos_out_of_limit
+    - joint_vel_out_of_limit
+    - collapse_ground_contact
+  required_reset_behavior:
+    - 60s timeout remains configured.
+    - Root height is relative to env terrain origin.
+    - Joint position limit reset uses JOINT_POS_LIMIT_TOLERANCE.
+    - Joint velocity limit reset uses USD hard velocity limits.
+    - Collapse reset triggers when any three limb groups contact ground.
+  forbidden_patterns:
+    - "func=mdp.root_height_below_minimum"

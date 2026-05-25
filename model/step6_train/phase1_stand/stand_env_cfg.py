@@ -38,13 +38,16 @@ EXTERNAL_FORCE_EVENT_TERMS = ()
 EPISODE_LENGTH_S = 60.0
 FALLEN_ROOT_HEIGHT_THRESHOLD = 0.45
 ALIVE_REWARD_WEIGHT = 5.0
+STANDING_TIME_REWARD_RAMP_START_S = 30.0
+STANDING_TIME_REWARD_RAMP_END_S = 60.0
+STANDING_TIME_REWARD_MAX_MULTIPLIER = 2.0
 CONTACT_SENSOR_NAME = "contact_forces"
 CONTACT_SENSOR_PRIM_PATH = "{ENV_REGEX_NS}/Robot/.*(ankle_roll_link|knee_link|elbow_link|wrist_yaw_link|rubber_hand)"
 CONTACT_SENSOR_HISTORY_LENGTH = 6
 FEET_CONTACT_THRESHOLD = 1.0
 FEET_SLIDE_WEIGHT = -0.5
 FEET_CONTACT_PRESENCE_WEIGHT = -1.0
-FEET_CONTACT_BALANCE_WEIGHT = -0.5
+FEET_CONTACT_BALANCE_WEIGHT = -0.15
 COLLAPSE_LEFT_LEG_BODY_NAMES = ("left_ankle_roll_link", "left_knee_link")
 COLLAPSE_RIGHT_LEG_BODY_NAMES = ("right_ankle_roll_link", "right_knee_link")
 COLLAPSE_LEFT_ARM_BODY_NAMES = ("left_elbow_link", "left_wrist_yaw_link", "left_rubber_hand")
@@ -58,13 +61,14 @@ SHOULDER_POSTURE_JOINTS = (
     ".*_shoulder_roll_joint",
     ".*_shoulder_yaw_joint",
 )
-NATURAL_POSTURE_ARM_JOINTS = (
-    ".*_shoulder_pitch_joint",
-    ".*_shoulder_roll_joint",
-    ".*_shoulder_yaw_joint",
-    ".*_elbow_joint",
-    ".*_wrist_.*_joint",
-)
+WAIST_TORSO_ALIGNMENT_JOINTS = ("waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint")
+HIP_POSTURE_JOINTS = (".*_hip_yaw_joint", ".*_hip_roll_joint", ".*_hip_pitch_joint")
+ELBOW_STRAIGHTNESS_JOINTS = (".*_elbow_joint",)
+HAND_POSTURE_JOINTS = (".*_wrist_roll_joint", ".*_wrist_pitch_joint", ".*_wrist_yaw_joint")
+LEFT_ARM_VERTICAL_SHOULDER_BODY_NAMES = ("left_shoulder_pitch_link",)
+LEFT_ARM_VERTICAL_HAND_BODY_NAMES = ("left_rubber_hand",)
+RIGHT_ARM_VERTICAL_SHOULDER_BODY_NAMES = ("right_shoulder_pitch_link",)
+RIGHT_ARM_VERTICAL_HAND_BODY_NAMES = ("right_rubber_hand",)
 LEFT_ARM_SYMMETRY_JOINTS = (
     "left_shoulder_pitch_joint",
     "left_shoulder_roll_joint",
@@ -84,10 +88,14 @@ RIGHT_ARM_SYMMETRY_JOINTS = (
     "right_wrist_yaw_joint",
 )
 JOINT_DEVIATION_WAIST_WEIGHT = -0.2
-JOINT_DEVIATION_ARMS_WEIGHT = -1.0
 JOINT_DEVIATION_SHOULDERS_WEIGHT = -2.0
 JOINT_SYMMETRY_ARMS_WEIGHT = -0.2
 ARM_SWING_L2_WEIGHT = -3.0
+WAIST_TORSO_ALIGNMENT_WEIGHT = -2.0
+HIP_DEVIATION_WEIGHT = -0.3
+ELBOW_STRAIGHTNESS_WEIGHT = -2.0
+HAND_JOINT_DEVIATION_WEIGHT = -1.0
+ARM_VERTICAL_ALIGNMENT_WEIGHT = -1.0
 ANG_VEL_XY_WEIGHT = -1.5
 JOINT_VEL_L2_WEIGHT = -5.0e-3
 ACTION_RATE_L2_WEIGHT = -0.05
@@ -124,8 +132,12 @@ REWARD_TERMS = (
     "action_rate_l2",
     "joint_deviation_waist",
     "joint_deviation_shoulders",
-    "joint_deviation_arms",
     "joint_symmetry_arms",
+    "waist_torso_alignment_l2",
+    "hip_deviation_l2",
+    "elbow_straightness_l2",
+    "hand_joint_deviation_l2",
+    "arm_vertical_alignment_l2",
     "termination_penalty",
     "joint_limit_violation_penalty",
     "collapse_ground_contact_penalty",
@@ -172,6 +184,7 @@ def create_g1_stand_no_external_force_env_cfg(
     from isaaclab.terrains import TerrainImporterCfg
     from isaaclab.utils import configclass
     from stand_actions import ClampedJointPositionActionCfg
+    from stand_rewards import arm_vertical_alignment_l2 as arm_vertical_alignment_l2_fn
     from stand_rewards import arm_swing_asymmetry_l2 as arm_swing_asymmetry_l2_fn
     from stand_rewards import arm_swing_l2 as arm_swing_l2_fn
     from stand_rewards import collapse_ground_contact as collapse_ground_contact_fn
@@ -179,6 +192,7 @@ def create_g1_stand_no_external_force_env_cfg(
     from stand_rewards import feet_contact_balance as feet_contact_balance_fn
     from stand_rewards import feet_contact_presence as feet_contact_presence_fn
     from stand_rewards import feet_slide as feet_slide_fn
+    from stand_rewards import joint_deviation_l2 as joint_deviation_l2_fn
     from stand_rewards import joint_deviation_symmetry_l1 as joint_deviation_symmetry_l1_fn
     from stand_rewards import joint_limit_violation_event as joint_limit_violation_event_fn
     from stand_rewards import joint_pos_hard_limits_l1 as joint_pos_hard_limits_l1_fn
@@ -191,6 +205,7 @@ def create_g1_stand_no_external_force_env_cfg(
     from stand_rewards import make_right_arm_swing_cfg as make_right_arm_swing_cfg_fn
     from stand_rewards import root_height_below_minimum as root_height_below_minimum_fn
     from stand_rewards import root_height_below_minimum_event as root_height_below_minimum_event_fn
+    from stand_rewards import standing_time_reward as standing_time_reward_fn
 
     globals()["lin_vel_xy_l2_fn"] = lin_vel_xy_l2_fn
     globals()["joint_pos_soft_limits_l2_fn"] = joint_pos_soft_limits_l2_fn
@@ -202,13 +217,16 @@ def create_g1_stand_no_external_force_env_cfg(
     globals()["feet_contact_presence_fn"] = feet_contact_presence_fn
     globals()["feet_contact_balance_fn"] = feet_contact_balance_fn
     globals()["joint_deviation_symmetry_l1_fn"] = joint_deviation_symmetry_l1_fn
+    globals()["joint_deviation_l2_fn"] = joint_deviation_l2_fn
     globals()["arm_swing_l2_fn"] = arm_swing_l2_fn
     globals()["arm_swing_asymmetry_l2_fn"] = arm_swing_asymmetry_l2_fn
+    globals()["arm_vertical_alignment_l2_fn"] = arm_vertical_alignment_l2_fn
     globals()["make_left_arm_swing_cfg_fn"] = make_left_arm_swing_cfg_fn
     globals()["make_right_arm_swing_cfg_fn"] = make_right_arm_swing_cfg_fn
     globals()["joint_vel_usd_limits_l1_fn"] = joint_vel_usd_limits_l1_fn
     globals()["root_height_below_minimum_fn"] = root_height_below_minimum_fn
     globals()["root_height_below_minimum_event_fn"] = root_height_below_minimum_event_fn
+    globals()["standing_time_reward_fn"] = standing_time_reward_fn
     globals()["ClampedJointPositionActionCfg"] = ClampedJointPositionActionCfg
     globals()["collapse_ground_contact_fn"] = collapse_ground_contact_fn
     globals()["collapse_ground_contact_event_fn"] = collapse_ground_contact_event_fn
@@ -327,7 +345,15 @@ def create_g1_stand_no_external_force_env_cfg(
     class RewardsCfg:
         """Standing rewards for the no-external-force PPO baseline."""
 
-        is_alive = RewTerm(func=mdp.is_alive, weight=ALIVE_REWARD_WEIGHT)
+        is_alive = RewTerm(
+            func=standing_time_reward_fn,
+            weight=ALIVE_REWARD_WEIGHT,
+            params={
+                "ramp_start_s": STANDING_TIME_REWARD_RAMP_START_S,
+                "ramp_end_s": STANDING_TIME_REWARD_RAMP_END_S,
+                "max_multiplier": STANDING_TIME_REWARD_MAX_MULTIPLIER,
+            },
+        )
         flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
         base_height_l2 = RewTerm(func=mdp.base_height_l2, weight=-1.0, params={"target_height": 0.78})
         lin_vel_xy_l2 = RewTerm(func=lin_vel_xy_l2_fn, weight=-1.5)
@@ -395,11 +421,6 @@ def create_g1_stand_no_external_force_env_cfg(
             weight=JOINT_DEVIATION_SHOULDERS_WEIGHT,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(SHOULDER_POSTURE_JOINTS))},
         )
-        joint_deviation_arms = RewTerm(
-            func=mdp.joint_deviation_l1,
-            weight=JOINT_DEVIATION_ARMS_WEIGHT,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(NATURAL_POSTURE_ARM_JOINTS))},
-        )
         joint_symmetry_arms = RewTerm(
             func=joint_deviation_symmetry_l1_fn,
             weight=JOINT_SYMMETRY_ARMS_WEIGHT,
@@ -409,6 +430,44 @@ def create_g1_stand_no_external_force_env_cfg(
                 ),
                 "right_asset_cfg": SceneEntityCfg(
                     "robot", joint_names=list(RIGHT_ARM_SYMMETRY_JOINTS), preserve_order=True
+                ),
+            },
+        )
+        waist_torso_alignment_l2 = RewTerm(
+            func=joint_deviation_l2_fn,
+            weight=WAIST_TORSO_ALIGNMENT_WEIGHT,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(WAIST_TORSO_ALIGNMENT_JOINTS))},
+        )
+        hip_deviation_l2 = RewTerm(
+            func=joint_deviation_l2_fn,
+            weight=HIP_DEVIATION_WEIGHT,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(HIP_POSTURE_JOINTS))},
+        )
+        elbow_straightness_l2 = RewTerm(
+            func=joint_deviation_l2_fn,
+            weight=ELBOW_STRAIGHTNESS_WEIGHT,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(ELBOW_STRAIGHTNESS_JOINTS))},
+        )
+        hand_joint_deviation_l2 = RewTerm(
+            func=joint_deviation_l2_fn,
+            weight=HAND_JOINT_DEVIATION_WEIGHT,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=list(HAND_POSTURE_JOINTS))},
+        )
+        arm_vertical_alignment_l2 = RewTerm(
+            func=arm_vertical_alignment_l2_fn,
+            weight=ARM_VERTICAL_ALIGNMENT_WEIGHT,
+            params={
+                "left_shoulder_body_cfg": SceneEntityCfg(
+                    "robot", body_names=list(LEFT_ARM_VERTICAL_SHOULDER_BODY_NAMES), preserve_order=True
+                ),
+                "left_hand_body_cfg": SceneEntityCfg(
+                    "robot", body_names=list(LEFT_ARM_VERTICAL_HAND_BODY_NAMES), preserve_order=True
+                ),
+                "right_shoulder_body_cfg": SceneEntityCfg(
+                    "robot", body_names=list(RIGHT_ARM_VERTICAL_SHOULDER_BODY_NAMES), preserve_order=True
+                ),
+                "right_hand_body_cfg": SceneEntityCfg(
+                    "robot", body_names=list(RIGHT_ARM_VERTICAL_HAND_BODY_NAMES), preserve_order=True
                 ),
             },
         )

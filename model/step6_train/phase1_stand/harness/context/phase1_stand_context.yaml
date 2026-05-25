@@ -1,0 +1,21 @@
+phase1_stand:
+  train_entry: model/step6_train/phase1_stand/train_stand.py
+  play_entry: model/step6_train/phase1_stand/play_stand.py
+  env_config: model/step6_train/phase1_stand/stand_env_cfg.py
+  reward_helpers: model/step6_train/phase1_stand/stand_rewards.py
+  ppo_config: model/step6_train/phase1_stand/stand_ppo_cfg.py
+  action_clamp:
+    files:
+      - model/step6_train/phase1_stand/stand_actions.py
+      - model/step6_train/phase1_stand/stand_action_limits.py
+    expected: default_joint_pos + action * ACTION_SCALE is clamped into USD joint limits.
+
+terrain:
+  keys: [T0, T1, T2, T3, T4, T5]
+  registry: model/step6_train/terrains/__init__.py
+  smoke_test: model/step6_train/terrains/test_terrains.py
+
+checkpoints:
+  log_root: logs/rsl_rl/g1_stand
+  stable_alias: checkpoint_stand.pt
+  rsl_rl_pattern: model_*.pt
